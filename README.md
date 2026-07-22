@@ -19,6 +19,17 @@ own reader.
 
 Everything is toggled via `config.yaml` – no code changes needed.
 
+## Screenshots
+
+![Dashboard](screenshots/dashboard.png)
+*Dashboard: blindspots at the top (stories covered by only one side), topic
+filters, and cluster cards showing the bias distribution across distinct
+sources. The UI is German by design – see [CONTRIBUTING](CONTRIBUTING.md).*
+
+![Expanded cluster](screenshots/cluster-detail.png)
+*An expanded cluster: the same story as reported by 10 outlets, each headline
+coloured by the source's political lean (EU convention: left = red, right = blue).*
+
 ## Directory layout
 
 The repository is the project itself (flat, build context "."). Only

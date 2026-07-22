@@ -20,6 +20,17 @@ im eigenen Reader.
 
 Alles über `config.yaml` umschaltbar – kein Code-Eingriff nötig.
 
+## Screenshots
+
+![Dashboard](screenshots/dashboard.png)
+*Dashboard: oben die Blindspots (nur von einer Seite berichtet), Themenfilter
+und Cluster-Karten mit der Bias-Verteilung über verschiedene Quellen.*
+
+![Aufgeklapptes Cluster](screenshots/cluster-detail.png)
+*Ein aufgeklapptes Cluster: dasselbe Ereignis bei 10 Medien, jede Schlagzeile
+eingefärbt nach dem politischen Lager der Quelle (EU-Konvention: links = rot,
+rechts = blau).*
+
 ## Verzeichnis-Layout
 
 Das Repository ist selbst das Projekt (flach, build context "."). Versioniert
