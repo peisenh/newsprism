@@ -1,0 +1,156 @@
+# Example compose (copy to docker-compose.yml and adapt).
+#
+# newsprism itself is just the generator container - it writes the dashboard
+# (HTML/Atom/JSON) into a shared volume. HOW those files are served and secured
+# is infrastructure and up to you; nothing here is mandatory except the
+# `newsprism` service.
+#
+# This example runs in TWO modes:
+#   * Standalone (default): a small nginx serves the files and is published on a
+#     host port. `docker compose up` -> open http://localhost:8081/ . No reverse
+#     proxy, no TLS, no extra network needed. nginx is only ONE example static
+#     server here and is fully replaceable.
+#   * With Traefik: if you already run Traefik, remove the `ports:` lines, put
+#     the containers on your external traefik-network and enable the commented
+#     Traefik labels. TLS/hostname/ACME are environment-specific and not shown.
+#
+# This repo IS the project - Dockerfile/newsprism.py live in the same directory
+# as this compose, hence build context ".".
+# Before starting, copy the templates into a ./config/ directory (mounted as a
+# directory so changes take effect at runtime without a restart):
+#   mkdir -p config
+#   cp config.example.yaml   config/config.yaml
+#   cp bias_map.example.json config/bias_map.json
+#   cp entity_stopwords.example.yaml config/entity_stopwords.yaml
+#   cp .env.example .env
+
+services:
+  # nginx here is just ONE example of a static web server to serve the files
+  # newsprism generates - it is NOT part of newsprism and is fully replaceable
+  # (Caddy, Apache, `python -m http.server`, or an existing web server pointed
+  # at the shared volume all work). It is included only so `docker compose up`
+  # gives you something viewable in the browser right away.
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    restart: always
+    volumes:
+      - nginx-data:/usr/share/nginx/html:ro
+    # ── Standalone (no reverse proxy): expose a port and open
+    #    http://localhost:8081/ in the browser. This is all you need to try
+    #    newsprism without Traefik/nginx-proxy/Caddy in front.
+    ports:
+      - "8081:80"
+    # ── With Traefik: if you already run Traefik, remove the `ports:` above,
+    #    put nginx on your Traefik network (see the commented `networks:` below
+    #    and the `traefik-network` at the bottom), and use these labels. TLS,
+    #    hostname and ACME are environment-specific and intentionally not shown.
+    # networks:
+    #   - traefik-network
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.nginx.rule=Host(`your-server.example`) && PathPrefix(`/start`)"
+    #   - "traefik.http.routers.nginx.entrypoints=websecure"
+    #   - "traefik.http.routers.nginx.tls=true"
+    #   - "traefik.http.routers.nginx.priority=5"
+    #   - "traefik.http.middlewares.nginx-strip.stripprefix.prefixes=/start"
+    #   - "traefik.http.routers.nginx.middlewares=nginx-strip@docker"
+    #   - "traefik.http.services.nginx.loadbalancer.server.port=80"
+
+  newsprism:
+    build:
+      context: .
+      args:
+        # If /data and /cache on the host are owned by a specific UID/GID
+        # (e.g. the host user), adjust here - otherwise the container cannot
+        # write into the volumes. Default 1000:1000 fits most single-user
+        # Linux hosts.
+        UID: "1000"
+        GID: "1000"
+        # Version display in the dashboard. Fill from Git at build time, e.g.:
+        #   docker compose build \
+        #     --build-arg VERSION="$(git describe --tags --always --dirty)" \
+        #     --build-arg BUILD_DATE="$(date +%Y-%m-%d)"
+        # Without a tag, git describe yields the short hash. Unfilled -> "dev".
+        VERSION: "dev"
+        BUILD_DATE: ""
+    container_name: newsprism
+    restart: unless-stopped
+    # Standalone: no explicit network needed (compose creates a default bridge;
+    # newsprism reaches FreshRSS/Miniflux via their host URL from config.yaml).
+    # With Traefik: put newsprism on the same external network as your reader if
+    # you address it by container name (see commented block at the bottom).
+    # networks:
+    #   - traefik-network
+    environment:
+      CONFIG: /config/config.yaml
+      # RUN_ONCE: "1"             # one-off run for testing
+    env_file:
+      - .env                     # contains ANTHROPIC_API_KEY=... / COHERE_API_KEY=...
+    volumes:
+      # IMPORTANT: mount the config DIRECTORY, not the individual files.
+      # A bind mount of a single file sticks to its inode - if the file is
+      # edited (many editors replace it with a new inode), the container only
+      # sees the change after a restart. With a directory mount the container
+      # follows file replacements, so config.yaml/bias_map.json/
+      # entity_stopwords.yaml can be re-read at runtime.
+      # So place the three files in a subdirectory ./config/ :
+      #   mkdir -p config
+      #   cp config.example.yaml      config/config.yaml
+      #   cp bias_map.example.json    config/bias_map.json
+      #   cp entity_stopwords.example.yaml config/entity_stopwords.yaml
+      - ./config:/config:ro
+      - nginx-data:/data         # SAME volume as nginx, but WRITABLE here (no :ro)
+      - newsprism_cache:/cache   # persistent cache (embeddings, summaries, cost log)
+    # Hardening: runs as non-root (see Dockerfile), no writable root filesystem
+    # except /tmp, no additional Linux capabilities.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # ── Optional: refresh button in the dashboard (refresh_server.enabled: true) ──
+    # The dashboard's "Aktualisieren" button POSTs to /refresh, served by the
+    # listener on port 8080 inside the container. Enable this only after turning
+    # refresh_server on in config.yaml.
+    #
+    # Standalone (no proxy): just expose the port and the button works against
+    # http://localhost:8082/refresh (adjust the dashboard's refresh URL / your
+    # setup accordingly). NOTE: this exposes the refresh endpoint without auth,
+    # so only do it on a trusted LAN.
+    # ports:
+    #   - "8082:8080"
+    #
+    # With Traefik: route /start/prisma/refresh to port 8080 and protect it with
+    # BasicAuth. Do NOT put the htpasswd hash in plaintext here - use .env:
+    #   in .env  NPREF_BASICAUTH='user:$apr1$....'  (generate with
+    #   `htpasswd -nb user pass`). In compose labels $ is not interpolated, hence
+    #   the ${VAR} syntax - docker compose substitutes it from .env on 'up'.
+    # Requires newsprism on the traefik-network (see commented block above).
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.npref.rule=Host(`your-server.example`) && Path(`/start/prisma/refresh`)"
+    #   - "traefik.http.routers.npref.entrypoints=websecure"
+    #   - "traefik.http.routers.npref.tls=true"
+    #   - "traefik.http.routers.npref.priority=20"
+    #   - "traefik.http.middlewares.npref-strip.stripprefix.prefixes=/start/prisma"
+    #   - "traefik.http.middlewares.npref-auth.basicauth.users=${NPREF_BASICAUTH}"
+    #   - "traefik.http.routers.npref.middlewares=npref-strip@docker,npref-auth@docker"
+    #   - "traefik.http.services.npref.loadbalancer.server.port=8080"
+    #   # --- Alternative for a purely internal network WITHOUT BasicAuth ---
+    #   # use this single middlewares line instead of the two -auth ones above
+    #   # (only in a trusted LAN):
+    #   # - "traefik.http.routers.npref.middlewares=npref-strip@docker"
+
+volumes:
+  nginx-data:
+  newsprism_cache:
+
+# Only needed for the Traefik setup shown in the commented blocks above. For a
+# standalone start (ports:) you can delete this whole section - compose uses a
+# default bridge network automatically.
+# networks:
+#   traefik-network:
+#     external: true

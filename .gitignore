@@ -1,0 +1,34 @@
+# Produktive Dateien - aus den *.example-Vorlagen erzeugen (cp) und anpassen.
+# Enthalten echte Hostnamen, Quellnamen, API-Key-Referenzen etc.
+config.yaml
+docker-compose.yml
+bias_map.json
+
+# Produktives Config-Verzeichnis (zur Laufzeit in den Container gemountet).
+# Enthält die echten config.yaml/bias_map.json/entity_stopwords.yaml - gehört
+# NICHT ins Repo. Die Vorlagen dafür liegen im Repo-Root als *.example.
+/config/
+
+# Secrets
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Laufzeit-Caches und Ausgaben (liegen normalerweise in Docker-Volumes)
+/cache/
+/output/
+*.json.bak
+
+# Editor/OS
+.DS_Store
+.vscode/
+.idea/
+
+# Emacs
+*~
+\#*\#
+.\#*
+*.~undo-tree~

@@ -1,0 +1,210 @@
+# Stopword list for proper-noun detection (clustering.entity_weight > 0).
+#
+# Individual capitalized words that should NOT count as a proper noun:
+# generic news nouns that are capitalized in German even without
+# proper-noun status ("Regierung", "Krieg", "Bericht").
+# Multi-word phrases and acronyms (party/org acronyms, full personal names) are always
+# detected as proper nouns and are not affected by this list.
+#
+# Freely extendable/shortenable - no code change needed.
+
+# German – institutions/roles
+- Regierung
+- Bundesregierung
+- Opposition
+- Minister
+- Ministerin
+- Ministerium
+- Präsident
+- Präsidentin
+- Kanzler
+- Kanzlerin
+- Partei
+- Parteien
+- Fraktion
+- Parteitag
+- Koalition
+
+# German – processes/events
+- Bericht
+- Studie
+- Untersuchung
+- Umfrage
+- Analyse
+- Gesetz
+- Gesetze
+- Reform
+- Reformen
+- Debatte
+- Diskussion
+- Kritik
+- Vorwürfe
+- Vorwurf
+- Streit
+- Konflikt
+- Konflikte
+- Krieg
+- Kriege
+- Angriff
+- Angriffe
+- Anschlag
+- Anschläge
+- Urteil
+- Gericht
+- Polizei
+- Justiz
+- Proteste
+- Protest
+- Demonstration
+- Demonstrationen
+- Streik
+- Wahl
+- Wahlen
+- Abstimmung
+- Sitzung
+- Treffen
+- Gespräch
+- Gespräche
+- Verhandlung
+- Verhandlungen
+- Vertrag
+- Verträge
+- Abkommen
+- Forderung
+- Forderungen
+- Entscheidung
+- Entscheidungen
+- Plan
+- Pläne
+- Vorschlag
+- Vorschläge
+- Maßnahme
+- Maßnahmen
+- Krise
+- Krisen
+- Blockade
+- Blockaden
+- Militäraktion
+- Militär
+- Aktion
+
+# German – places/time/quantities
+- Staat
+- Staaten
+- Land
+- Länder
+- Bundesland
+- Stadt
+- Städte
+- Dorf
+- Gemeinde
+- Woche
+- Wochen
+- Monat
+- Monate
+- Jahr
+- Jahre
+- Tag
+- Tage
+- Morgen
+- Abend
+- Nacht
+- Wochenende
+- Prozent
+- Milliarden
+- Millionen
+- Euro
+- Dollar
+
+# German – people/society
+- Mensch
+- Menschen
+- Bürger
+- Bürgerin
+- Bürgerinnen
+- Familie
+- Familien
+- Kinder
+- Kind
+- Frauen
+- Frau
+- Mann
+- Männer
+- Opfer
+- Täter
+- Verdächtige
+- Verdächtiger
+- Politiker
+- Politikerin
+
+# German – topic fields/misc
+- Wirtschaft
+- Politik
+- Gesellschaft
+- Welt
+- Zukunft
+- Frage
+- Fragen
+- Antwort
+- Antworten
+- Problem
+- Probleme
+- Lösung
+- Lösungen
+- Ergebnis
+- Ergebnisse
+- Zahl
+- Zahlen
+- Unternehmen
+- Firma
+- Firmen
+- Konzern
+- Konzerne
+- Markt
+- Märkte
+- Preis
+- Preise
+- Kosten
+- Steuer
+- Steuern
+- Budget
+- Haushalt
+- Inflation
+- Wachstum
+- System
+- Systeme
+- Daten
+- Information
+- Informationen
+- Nachricht
+- Nachrichten
+- Medien
+- Presse
+- Zeitung
+- Zeitungen
+- Artikel
+- Sendung
+- Interview
+
+# English
+- Government
+- Minister
+- President
+- Report
+- Study
+- Crisis
+- War
+- Attack
+- Court
+- Police
+- State
+- City
+- Week
+- Month
+- Year
+- Day
+- Plan
+- Deal
+- Talks
+- Vote
+- Election

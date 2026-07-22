@@ -1,0 +1,423 @@
+# ============================================================
+#  newsprism – configuration
+#  Copy this file to config.yaml and adapt it.
+#  Each block is a switch; leave unused branches commented out.
+# ============================================================
+
+# ── Reader: where do the articles come from? ────────────────
+reader:
+  type: greader            # greader  -> works for FreshRSS AND Miniflux
+                           # miniflux -> native Miniflux REST API (token)
+
+  # --- greader variant (default, for FreshRSS) ---
+  base_url: "http://freshrss/api/greader.php"   # INTERNAL via container name, no TLS
+                                                # (FreshRSS must be on the traefik network)
+  # Credentials: RECOMMENDED via .env instead of plaintext here. Set username_env/
+  # password_env to the names of the environment variables (values in .env). The
+  # plaintext fields username/password still work as a fallback.
+  username_env: "FRESHRSS_USER"
+  password_env: "FRESHRSS_PASS"
+  # username: "freshrss"          # fallback (plaintext) - only if no _env is used
+  # password: "YOUR_API_PASSWORD" # IMPORTANT (FreshRSS): the API password from
+                                  # Profile -> "API management", NOT the login password.
+                                  # API must be enabled in the settings.
+  verify_tls: true                # set to false if access goes via https://your-server.example/...
+                                  # and the internal CA certificate is not in the container.
+                                  # CAUTION: false disables TLS certificate verification entirely -
+                                  # use only for trusted internal hosts, never for
+                                  # connections over public networks.
+
+  # --- miniflux variant (instead, when type: miniflux) ---
+  # base_url: "https://your-server.example/miniflux"
+  # api_token_env: "MINIFLUX_TOKEN"   # preferred via .env
+  # api_token: "YOUR_MINIFLUX_API_TOKEN"   # fallback (plaintext)
+
+  window_hours: 24         # only consider articles from the last N hours
+  max_items: 2000          # safety limit
+
+  # Do NOT read back the own Prisma feeds (prevents the feedback loop):
+  exclude_categories: ["Prisma"]          # category the Prisma feeds live in
+  exclude_sources: ["Nachrichten-Prisma"] # feed title (substring) as an extra safeguard
+
+  # Article title filter (substring, case-insensitive).
+  # Useful for repetitive video/podcast entries that have no source name of their
+  # own (daily short summaries, simplified-language versions) and for
+  # opinion/letter-to-the-editor formats that often falsely clump into format
+  # clusters (similar style, different topics). Adjust the examples.
+  exclude_title_patterns:
+    - "in 100 sekunden"
+    - "in einfacher sprache"
+    - "leser zu"
+    - "leser zum"
+    - "leser zur"
+    - "leser über"
+    - "leser fordern"
+    - "lesermeinungen"
+    - "leser-diskussion"
+    - "leserdiskussion"
+    - "anzeige:"          # paid ads/affiliate items (e.g. Golem "Anzeige: ...")
+    - "wochenhoroskop"    # tabloid with no news value, pollutes small clusters
+    - "sternzeichen"
+    - "lotto-zahlen"
+    - "gewinnzahlen"
+
+  # Like exclude_title_patterns, but checked against the article URL (substring,
+  # case-insensitive). Useful to exclude a particular section of a source without
+  # losing the whole source - e.g. BILD's transfer/sports feed, which delivers
+  # many unrelated short items and pollutes clusters. Leave empty if not needed.
+  exclude_url_patterns: []
+  #  - "bild.de/sport/fussball"
+  #  - "bild.de/sport/transfermarkt"
+
+  # Remove duplicates: discards articles with an identical URL or identical
+  # source + title combination. Some feeds deliver the same article multiple
+  # times (slightly different URL slugs, text vs. video variant).
+  # Default: true. Set to false to keep all raw articles.
+  deduplicate: true
+
+# ── Lean assignment: derived from the category name ─────────
+#   First matching rule (substring, case-insensitive) wins.
+#   OPML categories often encode the lean in the name already.
+lean:
+  rules:
+    - { match: "links",                lean: left }
+    - { match: "linksliberal",         lean: left }
+    - { match: "konservativ",          lean: right }
+    - { match: "rechts",               lean: right }
+    - { match: "öffentlich-rechtlich", lean: center }
+    - { match: "mitte",                lean: center }
+    - { match: "wire",                 lean: center }
+  default: other           # everything else (International, Tech, Science, Hobby)
+                           # -> does NOT feed into bias distribution/blindspot
+  analyze: [left, center, right]   # these leans are evaluated
+
+  # Assign individual sources to a lean (takes precedence over the category).
+  # Useful for mixed "International" categories where otherwise everything counts
+  # as "other" and distorts blindspots. The examples below are placeholders -
+  # enter the feed titles (substrings) of the own international sources here.
+  source_overrides:
+    "Beispiel Tageszeitung A": left
+    "Beispiel Nachrichtenagentur": center
+    "Beispiel Wochenmagazin": right
+
+  # Bias map: fine source->score mapping, -2 (left) .. +2 (right).
+  # Highest priority (before source_overrides and category). Substring on the feed title.
+  # The blindspot lean bucket is derived from the sign (<0 left, 0 center, >0 right).
+  #
+  # Recommended: move the large table into an external JSON file and only give the path
+  # here (see bias_map.json). Inline entries under "bias_map:" override individual values
+  # from the file - handy for quick corrections without touching the JSON.
+  #
+  # IMPORTANT: the bundled bias_map.json contains only generic placeholder names
+  # ("Beispiel Tageszeitung A" etc.) that illustrate the -2..+2 scheme. Replace the
+  # keys with the actual feed titles of the own sources (visible in the reader)
+  # and the values with the own assessment - the classification is subjective.
+  #
+  # 2ND DIMENSION (origin/perspective): state and non-Western media don't fit on the
+  # left-right axis. Instead of a number, an entry can be an object:
+  #   "TASS": { "score": null, "kind": "state-controlled", "alignment": "russia-state" }
+  # score:null = left/right not applicable. kind is one of three levels:
+  #   state-controlled       (state-controlled: TASS, Global Times, Press TV, teleSUR)
+  #   state-funded           (state-funded journalistic: Al Jazeera, France24)
+  #   independent-nonwestern (independent non-Western/exile: Meduza, Moscow Times, The Wire)
+  # alignment is only a detail tag for the tooltip. The dashboard then shows a second,
+  # separate "perspective" bar per cluster - but only if such sources are present.
+  # The old plain-number format remains fully valid (backward compatible).
+  bias_map_path: "/config/bias_map.json"
+
+  # Optional inline overrides (win over the file). Leave empty if not needed:
+  # bias_map:
+  #   "Beispiel Rundfunkanstalt": 0    # e.g. treat public broadcasting as center
+  #   "Beispiel Boulevardblatt": 1
+
+  # English-language sources (substring, feed title) - fallback heuristic:
+  # if a cluster gets NO LLM label, a German article (category contains
+  # links/rechts/mitte/...) is preferred as the cluster title, otherwise an
+  # article from this list, otherwise the newest article in any language.
+  # Prevents e.g. a Spanish article title from becoming the cluster label.
+  english_sources:
+    - "Beispiel Nachrichtenagentur"
+    - "Beispiel britische Zeitung"
+
+# ── Clustering: find the same story across multiple outlets ─
+clustering:
+  method: embedding        # embedding (recommended) | llm
+
+  threshold: 0.60          # max cosine distance for merging
+                            # (smaller = stricter/more clusters, larger = looser)
+                            # IMPORTANT: the right value depends on the embedding
+                            # model - different models have different distance
+                            # distributions. Empirical values with title+teaser:
+                            #   OpenAI text-embedding-3-*  -> ~0.55-0.60
+                            #   Cohere embed-v4.0 (cross-lingual) -> ~0.73
+                            # (0.73 separates weak vocabulary-mix clusters a bit
+                            #  better than 0.72 without breaking up the cross-lingual
+                            #  clusters; higher values risk over-clumping.)
+                            # Cross-lingual models (Cohere) put the same story in
+                            # DE/EN/FR into ONE cluster - with OpenAI it often
+                            # separates by language. When switching models,
+                            # recalibrate threshold (try a few values).
+  min_cluster_size: 2      # at least N articles for a real cluster
+  min_distinct_sources: 2  # at least N DIFFERENT sources, otherwise discard the cluster.
+                           # 2 = suppresses single-source clusters (one source delivering
+                           # many unrelated in-house items, e.g. a regional paper ->
+                           # "candy cloud" effect). Set to 1 to also allow
+                           # single-source clusters.
+  max_source_share: 0.9    # no single source may contribute >= this share of the articles
+                           # in the cluster. Catches disguised in-house clusters where a
+                           # single foreign article attaches itself to 30+ items from one
+                           # source and thus seemingly satisfies min_distinct_sources.
+                           # Set to 1.0 to disable.
+  split_above: 0           # break up giant clusters: clusters of at least this article
+                           # count are subdivided with sub_threshold into more
+                           # event-specific sub-clusters (the normal threshold groups
+                           # topically, so e.g. one broad topic becomes a 380-article cluster;
+                           # the split separates the individual events). 0 = off.
+                           # Reasonable e.g. 50-80. Cross-lingual references to the same
+                           # event are preserved (the subdivision runs within the
+                           # already topically closed cluster).
+  sub_threshold: 0.55      # stricter threshold for splitting the giant clusters
+                           # (noticeably smaller than threshold). Smaller = finer
+                           # split into more/smaller event clusters.
+
+  # Proper-noun overlap as a second clustering signal (experimental, default
+  # 0 = disabled, no behavioral difference from before).
+  # Detects proper nouns/acronyms (people, places, parties, organizations)
+  # in title+teaser. If two articles share many names -> distance drops (encourages
+  # merge despite slightly higher embedding distance - helps with "same story,
+  # worded differently"). If they share NO names -> distance rises (prevents
+  # merging different stories in the same topic field, e.g. different topics around one party
+  # or crime cases that are only lexically similar).
+  # 0.0 = off. Tested range: 0.08 (little influence, good discrimination)
+  # to 0.2 (too aggressive, too many splits). Recommendation: 0.08 as a starting point.
+  entity_weight: 0.0
+  entity_stopwords_path: "/config/entity_stopwords.yaml"  # stopword list as a separate file
+  # entity_diag: false     # true = per run, log the internal proper-noun distance
+  #                        # for larger clusters. Shows "merged" clusters (two
+  #                        # events with disjoint names): high proper-noun distance
+  #                        # despite similar wording -> more entity_weight would
+  #                        # separate them. If %w.names is low, the name extraction
+  #                        # doesn't separate (weight won't help then).
+  #                        # For calibration only, off in normal operation.
+
+  embedding:
+    provider: openai_compatible   # openai_compatible -> OpenAI, Ollama, LM Studio,
+                                  #                       DeepSeek, Voyage-compatible, etc.
+                                  # fastembed         -> local on the CPU (offline)
+    base_url: "https://api.openai.com/v1"
+    model: "text-embedding-3-small"
+    api_key_env: "OPENAI_API_KEY"
+
+    # Vector cache: reuse already-computed embeddings -> on the 6h cadence only
+    # NEW articles are embedded (saves ~75% compute time / API tokens).
+    # Leave empty ("") to disable. Don't confuse with cache_dir (model download).
+    cache_path: "/cache/embeddings.json"
+
+    # --- local instead (no API key needed, runs on the J4125) ---
+    # provider: fastembed
+    # model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    # cache_dir: "/cache"     # store the model download persistently (volume, see compose)
+
+    # --- cross-lingual via API (Cohere): the same story in different
+    #     languages (DE/EN/FR) lands in the same cluster, without local compute load.
+    #     Own API format, input_type=clustering is optimized for it. ---
+    # provider: cohere
+    # base_url: "https://api.cohere.com/v2"
+    # model: "embed-v4.0"          # or "embed-multilingual-v3.0"
+    # api_key_env: "COHERE_API_KEY"
+    # input_type: "clustering"     # for cluster similarity (not search_*)
+    # output_dimension: 1024       # v4.0: 256/512/1024/1536; v3.0 fixed 1024
+    # request_delay: 3.5           # sec pause between batches. Trial keys are
+    #                              # throttled to ~20 req/min -> 3.5 avoids 429.
+    #                              # Production key: 0 (no delay needed).
+    # max_retries: 5               # retry with backoff on 429
+    # cache_path: "/cache/embeddings.json"
+
+# ── Story labels / summaries (optional) ─────────────────────
+llm:
+  enabled: true
+  provider: anthropic      # anthropic | openai_compatible | none
+  model: "claude-haiku-4-5"
+  api_key_env: "ANTHROPIC_API_KEY"
+  # Which clusters get an LLM label (instead of just the original title):
+  #   - all blindspots (regardless of size)
+  #   - plus all clusters of size >= label_min_size
+  #   - at most label_max_total in total (blindspots count toward it; with more
+  #     candidates, the smallest non-blindspot clusters drop out).
+  # Cost/call brake: each new label = one LLM call (cached ones don't count).
+  label_min_size: 5        # a cluster is labeled from this article count up
+  label_max_total: 120     # cap on labeled clusters total (incl. blindspots)
+  max_label_titles: 50     # how many article TITLES per cluster go into the label
+                           # prompt. Important for large clusters: titles are
+                           # sorted newest-first, so with a small value the LLM
+                           # sees only the newest titles and may latch onto a
+                           # minor side story that happens to be recent instead
+                           # of the dominant topic (e.g. labelling a 54-article
+                           # "social-media age limits" cluster after a single
+                           # YouTube item). A higher value lets the dominant
+                           # theme outweigh such outliers and also surfaces a
+                           # genuine second event. Titles are cheap (see
+                           # max_label_teasers for the expensive part).
+  max_label_teasers: 8     # for how many of those the teaser text is also shown
+                           # (token brake; titles are cheap, teasers expensive).
+  language: "de"
+  cache_path: "/cache/summaries.json"   # cached labels -> the same story is not sent
+                                        # to the LLM again (saves cost on the 6h cadence).
+                                        # Leave empty ("") to disable the cache.
+
+  # --- openai_compatible (OpenAI, Ollama, Gemini OpenAI endpoint, Groq, OpenRouter) ---
+  # provider: openai_compatible
+  # base_url: "http://ollama:11434/v1"     # e.g. local Ollama
+  # model: "qwen3:8b"
+  # api_key_env: "OPENAI_API_KEY"          # arbitrary/empty for Ollama
+
+# ── Hotspots: group clusters into higher-level topics (display only) ──
+#   Second hierarchy level in the dashboard: stories (clusters) are grouped by
+#   the LLM into a few top-level topics (a major sporting event, a country/leader,
+#   "Middle East"). ONE additional LLM call per run (over the cluster labels),
+#   uses the llm block above. Has NO influence on clustering or blindspots.
+hotspots:
+  enabled: false           # true = enable hotspot grouping in the dashboard
+  target_count: 8          # target number of top-level topics (at most)
+  min_cluster_size: 4      # only clusters of this size and up are grouped
+  min_clusters: 5          # with fewer groupable clusters than this: skip
+  max_label_input: 200     # only send the largest N clusters to the LLM. With very
+                           # many clusters (large window_hours) the prompt would
+                           # otherwise become huge and the JSON answer would blow
+                           # past the output limit. Small clusters need no hotspot
+                           # assignment (they land under "Other").
+  # Dissolve mini-hotspots: the LLM often invents, run-dependently, many topics
+  # with only 1 story (e.g. "Taxes", "Media"). A hotspot only remains if it has
+  # at least min_stories clusters OR at least keep_if_articles articles (so
+  # important single topics like "Middle East" survive). Stricter = fewer, larger
+  # hotspots; e.g. min_stories 3 / keep_if_articles 30 for a compact bar.
+  min_stories: 2
+  keep_if_articles: 15
+
+  # User-defined hotspots: fixed topics preferred in EVERY run (in addition to
+  # the automatically generated ones). A topic only appears if at least
+  # min_stories headlines match it, but then it stays (it is not discarded by
+  # the mini-dissolution).
+  # Two kinds of entries:
+  #   - just a name (string)          -> assignment by LLM. Good for BROAD topics
+  #                                      (a research field, a local region).
+  #   - {name, keywords: [..]}         -> deterministic keyword matching:
+  #                                      a cluster is assigned to the topic if a
+  #                                      keyword appears in the label or an
+  #                                      article title. Good for SHORT/unambiguous
+  #                                      terms (party acronyms, short names) that the LLM would
+  #                                      otherwise dilute into a top-level topic
+  #                                      ("domestic politics").
+  # Sources are merged:
+  #   user_topics:        list here (rebuild/restart needed)
+  #   user_topics_path:   path to a JSON file (same structure), editable at
+  #                       runtime without a rebuild - target of a later web UI
+  #                       for creating/editing/deleting.
+  user_topics: []
+  #  - "Research topic XY"                       # broad -> LLM
+  #  - "Local <your city>"                       # broad -> LLM
+  #  - { name: "Party X", keywords: ["Party X", "Full Party Name", "Leader Name"] }
+  #  - { name: "Party Y", keywords: ["Party Y", "Leader Name", "Alt Name"] }
+  # user_topics_path: "/cache/user_hotspots.json"
+
+# ── Prices for the cost display (per 1M tokens) ─────────────
+#   Only for the cost estimate in the dashboard/log. Tokens are counted exactly
+#   from the API responses; here only the conversion to money. Enter the prices
+#   of the own provider (currency doesn't matter - it's only multiplied; the
+#   display writes "€", adjust if needed). A missing value -> 0.
+#   Example values as of June 2026 (USD), please keep up to date yourself:
+#     OpenAI text-embedding-3-large: 0.13 /Mtok
+#     OpenAI text-embedding-3-small: 0.02 /Mtok
+#     Claude Haiku 4.5: 1.00 input / 5.00 output /Mtok
+pricing:
+  embed_per_mtok: 0.13
+  llm_input_per_mtok: 1.00
+  llm_output_per_mtok: 5.00
+  # Optional monthly cost log (one aggregate per month, in the cache volume).
+  # Enables the lines "cost previous month / month so far / month estimated"
+  # in the statistics box. Leave empty/remove to disable it.
+  cost_log_path: "/cache/cost_log.json"
+
+# ── Refresh server: trigger a run via HTTP (optional, for the dashboard button) ──
+#   Starts a small HTTP listener in the container. POST /refresh triggers an
+#   immediate run (like SIGUSR1), with a cooldown. NO auth of its own - be sure
+#   to put a reverse proxy with BasicAuth in front (see README). The port is
+#   NOT mapped externally, only made reachable internally for the proxy.
+#   With enabled:true a "Refresh" button appears in the dashboard.
+refresh_server:
+  enabled: false
+  port: 8080
+  min_interval_minutes: 15   # cooldown: a renewed HTTP refresh is allowed at the
+                              # earliest this many minutes after the last run
+                              # (applies only to /refresh, not to SIGUSR1)
+  reload_hint_minutes: "1-2"  # text in the "reload the page in ca. X min" notice
+                              # after triggering a run. Just a display hint - set
+                              # it to your typical run duration, e.g. "2-3" or
+                              # "5". Quote it (it can contain a dash).
+
+# ── Blindspot rule ──────────────────────────────────────────
+blindspot:
+  min_articles: 3          # cluster needs at least this many articles in total
+  min_sources: 3           # the covering side needs at least this many DISTINCT outlets
+                           # -> a single prolific paper no longer triggers a blindspot
+
+# ── Origin/perspective badge (2nd dimension) ────────────────
+#   Controls when the "non-Western N" badge appears on a cluster
+#   (sources with kind in the bias_map: state-controlled / state-funded /
+#   independent-nonwestern). The badge should only mark clusters noticeably
+#   SHAPED by such sources - not ones where a single state source happens to be
+#   present. Both conditions must be met:
+origin:
+  badge_min_count: 2       # at least this many DISTINCT non-Western sources
+  badge_min_share: 0.25    # and at least this share of all distinct sources
+                           # of the cluster (0.25 = a quarter). Higher = stricter.
+
+# ── Output ──────────────────────────────────────────────────
+#   Writes to the subfolder /data/prisma -> lives in the nginx volume under
+#   /prisma and is reachable via nginx (your-server.example/start/prisma/...).
+#   Important: do NOT write to /data/index.html, that is the start page!
+output:
+  json_path: "/data/prisma/digest.json"
+  html: true
+  html_path: "/data/prisma/index.html"
+  title: "Nachrichten-Prisma"
+  timezone: "Europe/Berlin"   # display timezone for the HTML dashboard (status line)
+  archive: true               # on every run, store a timestamped HTML copy under
+                              # <html_path folder>/archiv/ + maintain an archive index.
+                              # No automatic cleanup - the archive grows.
+
+  # Atom feed to subscribe to in FreshRSS/Miniflux:
+  atom: true
+  atom_path: "/data/prisma/feed.xml"
+  atom_min_size: 2          # only clusters of this size and up as a feed entry (blindspots always)
+  feed_url: "https://your-server.example/start/prisma/feed.xml"
+
+  # How often a story (re)appears in the reader:
+  #   change -> new only on a content change (new outlet / blindspot status). Recommended.
+  #   daily  -> once per story and day.
+  #   run    -> fresh on every run (maximally current, but repetitions).
+  feed_guid: change
+
+  # separate feed with ONLY blindspots -> own category "Blindspots" in FreshRSS:
+  blindspot_feed: true
+  blindspot_feed_path: "/data/prisma/feed-blindspots.xml"
+  blindspot_feed_url: "https://your-server.example/start/prisma/feed-blindspots.xml"
+
+# ── Scheduler (inside the container) ────────────────────────
+schedule:
+  interval_hours: 3        # recompute every N hours (ignored when RUN_ONCE=1 is set)
+
+  # Whether a freshly (re)started container runs immediately on start (true) or
+  # waits first and then follows the schedule (false, default). With false,
+  # deploying/restarting does NOT trigger an immediate run; instead it waits
+  # only the REMAINING time since the last run (persisted in the cache volume):
+  # e.g. last run 5 h ago with interval_hours 6 -> waits ~1 h, so a deploy
+  # doesn't reset the rhythm. If the interval is already overdue (or no prior
+  # run is known on the very first start), it runs at the next loop / after one
+  # full interval respectively. Use ./build.sh --force-run (SIGUSR1) to run now.
+  run_on_start: false
+
+  # Optional daytime window (local time from output.timezone). Outside -> quiet hours.
+  # Omit both/set to null = around the clock. active_end is exclusive.
+  active_start: 7          # runs start from this hour on
+  active_end: 23           # up to before this hour; afterwards pause until active_start

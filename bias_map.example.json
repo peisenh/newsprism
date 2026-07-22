@@ -1,0 +1,26 @@
+{
+  "_README": "Source -> political classification. KEY = substring of the feed title (case-insensitive), VALUE = score -2..+2 OR an object for non-Western/state sources. This _README key is ignored (no feed is named like this).",
+  "_scale": "-2 = left, -1 = center-left, 0 = center, +1 = center-right, +2 = right. The classification is subjective - adjust to your own assessment.",
+  "_second_dimension": "State/non-Western media don't fit on the left-right axis. Instead of a number, an object: { score, kind, alignment }. score:null = left/right n/a. kind = state-controlled | state-funded | independent-nonwestern. alignment = free detail tag (tooltip only).",
+  "_note": "The names below are generic placeholders - replace them with the actual feed titles of your own sources.",
+
+  "Example Daily A": -2,
+  "Example Weekly A": -2,
+
+  "Example Daily B": -1,
+  "Example Broadcaster A": -1,
+
+  "Example News Agency": 0,
+  "Example Broadcaster B": 0,
+  "Example Business Daily": 0,
+
+  "Example Daily C": 1,
+  "Example Magazine A": 1,
+
+  "Example Daily D": 2,
+  "Example Online Portal A": 2,
+
+  "Example State Outlet (controlled)": { "score": null, "kind": "state-controlled", "alignment": "example-state" },
+  "Example Foreign Broadcaster (state-funded)": { "score": null, "kind": "state-funded", "alignment": "example-state" },
+  "Example Exile Outlet (independent)": { "score": null, "kind": "independent-nonwestern", "alignment": "example-exile" }
+}
