@@ -68,6 +68,7 @@ def _resolve_version() -> str:
             ["git", "describe", "--tags", "--always", "--dirty"],
             cwd=os.path.dirname(os.path.abspath(__file__)),
             capture_output=True, text=True, timeout=3,
+            check=False,
         )
         if out.returncode == 0 and out.stdout.strip():
             return out.stdout.strip()
@@ -1049,7 +1050,7 @@ def build_clusters(articles: list, labels: list, cfg: dict) -> list:
         _de_cats = {"links", "rechts", "konservativ", "mitte", "öffentlich", "wirtschaft",
                     "lokal", "regional"}
         _en_srcs = {s.lower() for s in cfg["lean"].get("english_sources", [])}
-        def _pref(a):
+        def _pref(a, _de_cats=_de_cats, _en_srcs=_en_srcs):
             cat = (a.category or "").lower()
             src = (a.source or "").lower()
             if any(k in cat for k in _de_cats):
@@ -1304,7 +1305,6 @@ def summarize_clusters(clusters: list, cfg: dict) -> None:
     lc = cfg["llm"]
     if not lc.get("enabled") or lc.get("provider") == "none":
         return
-    lang = lc.get("language", "de")
     minsize = cfg["clustering"].get("min_cluster_size", 2)
 
     # Selection of which clusters get an LLM label:
@@ -1399,7 +1399,7 @@ def summarize_clusters(clusters: list, cfg: dict) -> None:
         is_bs_candidate = bool(c.blindspot)
         if is_bs_candidate:
             relevance_block = (
-                f"SCHRITT 0 - Bewerte die ÜBERREGIONALE RELEVANZ: Ist das ein "
+                "SCHRITT 0 - Bewerte die ÜBERREGIONALE RELEVANZ: Ist das ein "
                 f"bedeutsames politisches, wirtschaftspolitisches oder "
                 f"gesellschaftliches Thema von überregionalem Interesse "
                 f"(RELEVANT)? Oder nur Lokales/Regionales ohne überregionale "
@@ -1820,7 +1820,7 @@ ORIGIN_CLASS = {"state-controlled": "s-sc", "state-funded": "s-sf",
 # Favicon (Prisma icon) as an inline data URI - so every generated page
 # (dashboard and archive snapshot) carries its own favicon, without an external
 # file in the output volume (no path/reset breakage risk). Source: logo/favicon.svg.
-FAVICON_TAG = ('<link rel="icon" href="data:image/svg+xml,%3Csvg%20width%3D%2264%22%20height%3D%2264%22%20viewBox%3D%220%200%2064%2064%22%20role%3D%22img%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Ctitle%3ENewsPrism%3C/title%3E%3Cdesc%3ENewsPrism%20Favicon%3A%20aufgef%C3%A4chertes%20Bias-Spektrum.%3C/desc%3E%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%23f1f3f7%22/%3E%3Ccircle%20cx%3D%2218%22%20cy%3D%2232%22%20r%3D%225%22%20fill%3D%22%231f2a44%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2252%22%20y2%3D%2214%22%20stroke%3D%22%231e3a8a%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2254%22%20y2%3D%2225%22%20stroke%3D%22%233b82f6%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2255%22%20y2%3D%2232%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2254%22%20y2%3D%2239%22%20stroke%3D%22%23dc2626%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2252%22%20y2%3D%2250%22%20stroke%3D%22%237f1d1d%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E">')
+FAVICON_TAG = '<link rel="icon" href="data:image/svg+xml,%3Csvg%20width%3D%2264%22%20height%3D%2264%22%20viewBox%3D%220%200%2064%2064%22%20role%3D%22img%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Ctitle%3ENewsPrism%3C/title%3E%3Cdesc%3ENewsPrism%20Favicon%3A%20aufgef%C3%A4chertes%20Bias-Spektrum.%3C/desc%3E%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%23f1f3f7%22/%3E%3Ccircle%20cx%3D%2218%22%20cy%3D%2232%22%20r%3D%225%22%20fill%3D%22%231f2a44%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2252%22%20y2%3D%2214%22%20stroke%3D%22%231e3a8a%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2254%22%20y2%3D%2225%22%20stroke%3D%22%233b82f6%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2255%22%20y2%3D%2232%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2254%22%20y2%3D%2239%22%20stroke%3D%22%23dc2626%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2252%22%20y2%3D%2250%22%20stroke%3D%22%237f1d1d%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E">'
 
 
 def _src_attr(a: dict) -> str:
@@ -2512,13 +2512,6 @@ def write_html(payload: dict, path: str, refresh_enabled: bool = False) -> None:
 </script>"""
 
     # cost line (if usage data is present and > 0)
-    cost_str = ""
-    u = payload.get("usage")
-    if u and u.get("total_eur", 0) > 0:
-        cost_str = (f' · <span class="cost" title="Embeddings {u["embed_tokens"]} Tok · '
-                    f'LLM {u["llm_calls"]} Calls / {u["llm_in"]}+{u["llm_out"]} Tok">'
-                    f'Lauf-Kosten ~{u["total_eur"]:.3f} €</span>')
-
     doc = f"""<!doctype html><html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(payload['title'])}</title>
@@ -2772,8 +2765,8 @@ def write_atom(clusters: list, cfg: dict) -> None:
     # Main feed: clusters of minimum size OR blindspots
     path = oc.get("atom_path")
     if path:
-        main = [c for c in clusters if c.size >= min_size or c.blindspot]
-        _write(path, _atom_feed(main, title, "tag:newsprism:feed",
+        main_feed = [c for c in clusters if c.size >= min_size or c.blindspot]
+        _write(path, _atom_feed(main_feed, title, "tag:newsprism:feed",
                                 oc.get("feed_url", ""), guid_mode))
 
     # Separater Blindspot-Feed -> eigene Kategorie in FreshRSS
@@ -3118,7 +3111,7 @@ def main() -> None:
             continue
         if has_window and not _force_run.is_set():
             h = _now_local(tzname).hour
-            if not (active_start <= h < active_end):
+            if not active_start <= h < active_end:
                 secs = _secs_until_local_hour(tzname, active_start)
                 print(f"[*] quiet hours – sleeping until {active_start:02d}:00 "
                       f"(~{secs // 3600} h) ... (SIGUSR1 for an immediate run)",
