@@ -1,0 +1,39 @@
+{#- Small reusable markup fragments, kept as macros so no HTML lives in the
+    Python helpers. Each mirrors the former lean_bar/bias_bar/origin_badges
+    functions 1:1; the Python side now only prepares the numeric data. -#}
+
+{%- macro lean_bar(counts) -%}
+{%- set total = (counts.values()|sum) or 1 -%}
+<div class="bar">
+{%- for lean in ['left', 'center', 'right'] -%}
+{%- set n = counts.get(lean, 0) -%}
+{%- if n -%}
+<span title="{{ LEAN_LABEL[lean] }}: {{ n }}" style="display:inline-block;height:10px;width:{{ '%.1f'|format(100 * n / total) }}%;background:var(--lean-{{ lean }})"></span>
+{%- endif -%}
+{%- endfor -%}
+</div>
+{%- endmacro -%}
+
+{%- macro bias_bar(bias_counts) -%}
+{%- if bias_counts -%}
+{%- set total = (bias_counts.values()|sum) or 1 -%}
+<div class="bar">
+{%- for score in SCORE_ORDER -%}
+{%- set n = bias_counts.get(score, 0) -%}
+{%- if n -%}
+{%- set var = ('sm' ~ score[1:]) if score.startswith('-') else ('sp' ~ score) -%}
+<span title="{{ SCORE_LABEL[score] }}: {{ n }}" style="display:inline-block;height:10px;width:{{ '%.1f'|format(100 * n / total) }}%;background:var(--score-{{ var }})"></span>
+{%- endif -%}
+{%- endfor -%}
+</div>
+{%- endif -%}
+{%- endmacro -%}
+
+{#- origin_badges: the decision logic (thresholds) stays in Python, which passes
+    a ready-made dict {total, color, detail} or nothing. This keeps the macro to
+    pure markup and the business rules testable in Python. -#}
+{%- macro origin_badge(badge) -%}
+{%- if badge -%}
+<span class="orig" style="background:{{ badge.color }}1a;color:{{ badge.color }}" title="{{ badge.detail }}">nicht-westlich {{ badge.total }}</span>
+{%- endif -%}
+{%- endmacro -%}

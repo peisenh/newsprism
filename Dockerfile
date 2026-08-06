@@ -5,6 +5,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY newsprism.py .
+COPY static/ static/
+COPY templates/ templates/
 
 # Burn in the version (release tag or Git hash) at build time, since the
 # container has no Git/.git at runtime. Filled at build time, e.g.

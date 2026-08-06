@@ -3,6 +3,7 @@ requests>=2.31
 numpy>=1.26
 scikit-learn>=1.4
 tzdata>=2024.1          # timezone data for zoneinfo (python:slim doesn't have it)
+Jinja2>=3.1              # HTML templating for the dashboard/archive output
 
 # Only needed when clustering.embedding.provider = fastembed (local CPU embeddings).
 # Pulls in onnxruntime; leave commented out when using API embeddings.

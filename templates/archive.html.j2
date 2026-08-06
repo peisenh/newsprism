@@ -1,0 +1,32 @@
+{#- Archive index page. Self-contained (its own small inline stylesheet) since
+    it is a simple listing that should not depend on the shared dashboard CSS.
+    Python (_archive_html) prepares the grouped sections as ready markup. -#}
+<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} – Archiv</title>
+{{ favicon_tag|safe }}
+<style>
+  body{font-family:system-ui,sans-serif;background:#eef1f5;color:#1f2937;
+     margin:0;padding:1rem;max-width:70rem;}
+  h1{font-size:1.2rem;font-weight:600;margin-bottom:.2rem;}
+  .meta{color:#6b7280;font-size:.8rem;margin-bottom:1.4rem;}
+  h2{font-size:1rem;font-weight:700;margin:1.4rem 0 .6rem;
+     border-bottom:2px solid #cbd2da;padding-bottom:.2rem;}
+  .day{margin:.5rem 0 .9rem;}
+  .day-h{font-size:.82rem;font-weight:600;color:#4b5563;margin-bottom:.35rem;}
+  .day-n{font-weight:400;color:#9ca3af;font-size:.72rem;}
+  .chips{display:flex;flex-wrap:wrap;gap:.4rem;}
+  .chips a{background:#fff;border:1px solid #dbe0e6;border-radius:8px;
+     padding:.35rem .6rem;text-decoration:none;color:#1f2937;font-size:.82rem;
+     font-variant-numeric:tabular-nums;}
+  .chips a:hover{border-color:#1f2a44;}
+  @media(prefers-color-scheme:dark){
+    body{background:#11151c;color:#e5e7eb;}
+    h2{border-color:#2a323e;} .day-h{color:#cbd5e1;}
+    .chips a{background:#1b212b;border-color:#2a323e;color:#e5e7eb;}
+  }
+</style></head><body>
+<h1>{{ title }} – Archiv</h1>
+<div class="meta">{{ n_snaps }} Snapshots · <a href="../" style="color:inherit;">zurück zum Dashboard</a></div>
+{{ sections|safe }}
+</body></html>

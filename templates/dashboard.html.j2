@@ -1,0 +1,46 @@
+{%- import "macros.html.j2" as m -%}
+{#- Full dashboard page. Python (write_html) prepares all values and the three
+    zones (blindspots box, chip bar, flat card list) as ready markup passed in
+    with |safe; this template is the page skeleton. -#}
+<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+{{ favicon_tag|safe }}
+<link rel="stylesheet" href="{{ css_href }}"></head><body>
+<h1 class="brand">
+  <svg viewBox="0 0 480 120" role="img" aria-label="{{ title }}">
+    <line x1="20" y1="60" x2="60" y2="60" stroke="#9ca3af" stroke-width="5" stroke-linecap="round"/>
+    <polygon class="brand-prism" points="64,30 64,90 112,60"/>
+    <line x1="114" y1="60" x2="170" y2="36" stroke="#1e3a8a" stroke-width="4" stroke-linecap="round"/>
+    <line x1="114" y1="60" x2="172" y2="48" stroke="#3b82f6" stroke-width="4" stroke-linecap="round"/>
+    <line x1="114" y1="60" x2="174" y2="60" stroke="#6b7280" stroke-width="4" stroke-linecap="round"/>
+    <line x1="114" y1="60" x2="172" y2="72" stroke="#dc2626" stroke-width="4" stroke-linecap="round"/>
+    <line x1="114" y1="60" x2="170" y2="84" stroke="#7f1d1d" stroke-width="4" stroke-linecap="round"/>
+    <text x="220" y="73" class="brand-word" font-size="40" font-weight="600">News<tspan class="brand-accent">Prism</tspan></text>
+  </svg>
+</h1>
+<div class="meta">Stand: {{ generated_local }} · {{ n_visible }} Cluster · <a href="archiv/" style="color:inherit;">Archiv</a>{{ refresh_btn|safe }}{{ version_str|safe }}</div>
+<div class="legend">
+  <span class="legend-item"><span class="sw" style="background:var(--lean-left)"></span>links</span>
+  <span class="legend-item"><span class="sw" style="background:var(--lean-center)"></span>Mitte</span>
+  <span class="legend-item"><span class="sw" style="background:var(--lean-right)"></span>rechts</span>
+  <button id="color-toggle" type="button" class="color-toggle"
+          title="Zwischen EU-Farben (links=rot) und US-Farben (links=blau) umschalten">
+    Farbschema: <span id="color-scheme-name">EU</span>
+  </button>
+</div>
+<div class="search-row">
+  <input type="search" id="kw-search" class="kw-search" autocomplete="off"
+         placeholder="Schlagwörter filtern (Leerzeichen = UND) …"
+         aria-label="Cluster nach Schlagwörtern filtern">
+  <span id="kw-count" class="kw-count"></span>
+</div>
+{{ config_warn|safe }}
+{{ usage_line|safe }}
+{{ bs_section|safe }}
+{{ chips|safe }}
+<div id="cluster-list">
+{{ list_cards|safe }}
+</div>
+<script src="{{ js_src }}"></script>
+</body></html>

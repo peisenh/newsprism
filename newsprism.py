@@ -45,6 +45,34 @@ from typing import Optional
 import yaml
 import requests
 
+# --------------------------------------------------------------------------- #
+#  Jinja2 templating for the HTML output (dashboard, cards, archive).
+#  The environment is built lazily on first use so that non-HTML code paths
+#  (and imports) don't pay for it. Templates live in templates/ next to this
+#  script (copied into the image alongside static/).
+# --------------------------------------------------------------------------- #
+_JINJA_ENV = None
+
+
+def _jinja_env():
+    """Return the shared Jinja2 environment, building it on first use."""
+    global _JINJA_ENV
+    if _JINJA_ENV is None:
+        import jinja2
+        tpl_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "templates")
+        env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(tpl_dir),
+            autoescape=True,
+        )
+        # Constants the macros/templates reference by name.
+        env.globals.update(
+            LEAN_LABEL=LEAN_LABEL, SCORE_LABEL=SCORE_LABEL,
+            SCORE_ORDER=SCORE_ORDER,
+        )
+        _JINJA_ENV = env
+    return _JINJA_ENV
+
 # scikit-learn/numpy are only needed for method=embedding.
 try:
     import numpy as np
@@ -1837,71 +1865,56 @@ def _src_attr(a: dict) -> str:
     return 'style="color:#555"'
 
 
-def origin_badges(origin_counts: dict, n_total_sources: int = 0,
-                  min_share: Optional[float] = None,
-                  min_count: Optional[int] = None) -> str:
-    """Second dimension as ONE collective badge in the card header: number of
-    non-Western/state sources, colored by the strongest level present
-    (state-controlled > state-funded > independent-nonwestern); breakdown
-    in the tooltip.
+def _origin_badge_data(origin_counts: dict, n_total_sources: int = 0,
+                       min_share: Optional[float] = None,
+                       min_count: Optional[int] = None) -> Optional[dict]:
+    """Decide whether the non-Western/state origin badge applies and, if so,
+    return {total, color, detail} for the template; otherwise None.
 
     The badge appears only if the non-Western sources shape the cluster
-    noticeably: at least min_count distinct non-Western sources AND a
-    share of >= min_share of all distinct sources of the cluster. This drops
-    the many cases where only a single state source happens to be present
-    (noise), while dominated clusters (e.g. a story reported almost only by
-    state media) stay highlighted."""
+    noticeably: at least min_count distinct non-Western sources AND a share of
+    >= min_share of all distinct sources. This drops the many cases where only a
+    single state source happens to be present (noise), while dominated clusters
+    (e.g. a story reported almost only by state media) stay highlighted."""
     if not origin_counts:
-        return ""
+        return None
     if min_share is None:
         min_share = _ORIGIN_MIN_SHARE
     if min_count is None:
         min_count = _ORIGIN_MIN_COUNT
     strongest = next((k for k in ORIGIN_ORDER if origin_counts.get(k)), None)
     if not strongest:
-        return ""
+        return None
     total = sum(origin_counts.values())
     if total < min_count:
-        return ""
+        return None
     if n_total_sources > 0 and (total / n_total_sources) < min_share:
-        return ""
+        return None
     detail = ", ".join(f"{origin_counts[k]} {ORIGIN_LABEL[k]}"
                        for k in ORIGIN_ORDER if origin_counts.get(k))
-    col = ORIGIN_COLORS[strongest]
-    return (f'<span class="orig" style="background:{col}1a;color:{col}" '
-            f'title="{html.escape(detail)}">nicht-westlich {total}</span>')
+    return {"total": total, "color": ORIGIN_COLORS[strongest], "detail": detail}
+
+
+def origin_badges(origin_counts: dict, n_total_sources: int = 0,
+                  min_share: Optional[float] = None,
+                  min_count: Optional[int] = None) -> str:
+    """Second dimension as ONE collective badge in the card header (see
+    _origin_badge_data for the logic). Thin wrapper rendering the macro."""
+    data = _origin_badge_data(origin_counts, n_total_sources, min_share,
+                              min_count)
+    macros = _jinja_env().get_template("macros.html.j2").module
+    return str(macros.origin_badge(data))
 
 
 def lean_bar(counts: dict) -> str:
-    total = sum(counts.values()) or 1
-    seg = ""
-    for lean in ("left", "center", "right"):
-        n = counts.get(lean, 0)
-        if n:
-            pct = 100 * n / total
-            seg += (f'<span title="{LEAN_LABEL[lean]}: {n}" '
-                    f'style="display:inline-block;height:10px;width:{pct:.1f}%;'
-                    f'background:var(--lean-{lean})"></span>')
-    return f'<div class="bar">{seg}</div>'
+    macros = _jinja_env().get_template("macros.html.j2").module
+    return str(macros.lean_bar(counts))
 
 
 def bias_bar(bias_counts: dict) -> str:
     """Fine 5-level bar from the bias map (distinct sources per score level)."""
-    if not bias_counts:
-        return ""
-    total = sum(bias_counts.values()) or 1
-    seg = ""
-    for score in SCORE_ORDER:
-        n = bias_counts.get(score, 0)
-        if n:
-            pct = 100 * n / total
-            # CSS var per score level (s_2 = -2 ... p2 = +2; 'm'=minus, 'p'=plus
-            # to keep the var name CSS-safe without a literal minus sign).
-            var = "sm" + score[1:] if score.startswith("-") else "sp" + score
-            seg += (f'<span title="{SCORE_LABEL[score]}: {n}" '
-                    f'style="display:inline-block;height:10px;width:{pct:.1f}%;'
-                    f'background:var(--score-{var})"></span>')
-    return f'<div class="bar">{seg}</div>'
+    macros = _jinja_env().get_template("macros.html.j2").module
+    return str(macros.bias_bar(bias_counts))
 
 
 def _render_card(c: dict, in_bs_box: bool = False) -> str:
@@ -1945,9 +1958,6 @@ def _render_card(c: dict, in_bs_box: bool = False) -> str:
         )
     srcs = " · ".join(src_links)
     n_src = len(src_links)
-    src_count = f'<span class="src-n">{n_src} Quelle{"n" if n_src != 1 else ""}</span>'
-    # Origin badge only now (needs n_src as the denominator for the share).
-    orig_badges = origin_badges(c.get("origin_counts"), n_src)
     art_items = "".join(
         f'<li><a href="{html.escape(_safe_url(a["url"]))}" '
         f'{_src_attr(a)}>'
@@ -1956,7 +1966,9 @@ def _render_card(c: dict, in_bs_box: bool = False) -> str:
         for a in c["articles"]
     )
     art_count = len(c["articles"])
-    hs_attr = html.escape(hotspot, quote=True) if hotspot else "\u00ffrest"
+    # Raw values for attributes; Jinja autoescaping handles the escaping in the
+    # template (escaping here too would double-encode).
+    hs_attr = hotspot if hotspot else "\u00ffrest"
 
     # Share text (plain text, WhatsApp-compatible: *bold* for the title, raw
     # URLs are made clickable automatically by mail/chat apps). Stored in the
@@ -1989,7 +2001,7 @@ def _render_card(c: dict, in_bs_box: bool = False) -> str:
     anchor = ""
     if c["articles"]:
         anchor = c["articles"][-1].get("url") or ""
-    cid = html.escape(anchor or c["label"], quote=True)
+    cid = anchor or c["label"]          # raw; Jinja escapes in the template
 
     # Search corpus for the keyword filter: label + all article titles + all
     # source names, lowercased, so the client-side search is a simple substring
@@ -2000,19 +2012,24 @@ def _render_card(c: dict, in_bs_box: bool = False) -> str:
             search_parts.append(a["title"])
         if a.get("source"):
             search_parts.append(a["source"])
-    search_blob = html.escape(" ".join(search_parts).lower(), quote=True)
+    search_blob = " ".join(search_parts).lower()   # raw; Jinja escapes it
 
-    return f"""
-          <div class="card" data-hotspot="{hs_attr}" data-cid="{cid}" data-search="{search_blob}">
-            <div class="head"><span class="size">{c['size']}</span>
-              <span class="label">{html.escape(c['label'])}</span>{ai_badge}{hs_badge}{orig_badges}{badge}{share_btn}</div>
-            {bias_bar(c.get('bias_counts')) or lean_bar(c['lean_counts'])}
-            <div class="srcs">{src_count}{srcs}</div>
-            <details class="arts">
-              <summary>{art_count} Artikel<span class="kw-hits"></span></summary>
-              <ul>{art_items}</ul>
-            </details>
-          </div>"""
+    tmpl = _jinja_env().get_template("card.html.j2")
+    return tmpl.render(
+        c=c,
+        badge=badge,
+        ai_badge=ai_badge,
+        hs_badge=hs_badge,
+        origin_badge=_origin_badge_data(c.get("origin_counts"), n_src),
+        srcs=srcs,
+        n_src=n_src,
+        art_items=art_items,
+        art_count=art_count,
+        hs_attr=hs_attr,
+        share_btn=share_btn,
+        cid=cid,
+        search_blob=search_blob,
+    )
 
 
 def _config_warn_html(msg) -> str:
@@ -2104,6 +2121,12 @@ def _usage_line(usage: Optional[dict]) -> str:
 
 def write_html(payload: dict, path: str, refresh_enabled: bool = False) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    # Publish CSS/JS under content-hashed names first, so the document can
+    # reference exactly the versions written for this run (keeps old archive
+    # snapshots faithful - see _publish_static_assets).
+    assets = _publish_static_assets(os.path.dirname(path))
+    css_href = assets["style.css"]
+    js_src = assets["app.js"]
     # Take the origin-badge thresholds from the payload (from to_payload/cfg).
     global _ORIGIN_MIN_SHARE, _ORIGIN_MIN_COUNT
     if "origin_min_share" in payload:
@@ -2148,539 +2171,69 @@ def write_html(payload: dict, path: str, refresh_enabled: bool = False) -> None:
     # Zone 3: flat cluster list (size-sorted), each card with data-hotspot.
     list_cards = "".join(_render_card(c) for c in visible)
 
-    # filter JS only if chips exist
-    filter_js = ""
-    if hotspots_present:
-        filter_js = """
-<script>
-(function(){
-  var REST = '\\u00ffrest';
-  var chips = document.querySelectorAll('.chip');
-  var cards = document.querySelectorAll('#cluster-list .card');
-  function activeFilter(){
-    var a = document.querySelector('.chip.active');
-    return a ? a.getAttribute('data-filter') : '*';
-  }
-  function applyFilter(){
-    var f = activeFilter();
-    // keyword terms come from the shared search box (if present); a card must
-    // match the active hotspot AND contain every term (AND, substring).
-    var terms = (window.__npSearchTerms || []);
-    cards.forEach(function(card){
-      var okHot = (f === '*' || card.getAttribute('data-hotspot') === f);
-      var okKw = true;
-      if (terms.length){
-        var blob = card.getAttribute('data-search') || '';
-        for (var i = 0; i < terms.length; i++){
-          if (blob.indexOf(terms[i]) === -1){ okKw = false; break; }
-        }
-      }
-      card.style.display = (okHot && okKw) ? '' : 'none';
-    });
-  }
-  window.__npApplyFilter = applyFilter;   // let the search box trigger it too
-  chips.forEach(function(chip){
-    chip.addEventListener('click', function(){
-      chips.forEach(function(c){ c.classList.remove('active'); });
-      chip.classList.add('active');
-      applyFilter();
-    });
-  });
-  // Remove a single cluster from its hotspot grouping (client-side only;
-  // resets on the next generated page). The card stays in the flat list under
-  // "Weitere"; only its hotspot assignment is dropped and the chip counts and
-  // the size number on the matching chip are updated.
-  function sizeOf(card){
-    var s = card.querySelector('.size');
-    var n = s ? parseInt(s.textContent, 10) : 0;
-    return isNaN(n) ? 0 : n;
-  }
-  function adjustChip(filterVal, delta){
-    var chip = document.querySelector('.chip[data-filter="' + (window.CSS && CSS.escape ? CSS.escape(filterVal) : filterVal) + '"]');
-    if (!chip) return;
-    var nEl = chip.querySelector('.chip-n');
-    if (nEl){
-      var v = parseInt(nEl.textContent, 10) || 0;
-      v += delta;
-      if (v <= 0){ chip.remove(); }   // hotspot empty -> drop the chip
-      else { nEl.textContent = v; }
-    }
-  }
-  document.addEventListener('click', function(ev){
-    var btn = ev.target.closest ? ev.target.closest('.hs-remove') : null;
-    if (!btn) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    var card = btn.closest('.card');
-    if (!card) return;
-    var old = card.getAttribute('data-hotspot');
-    if (!old || old === REST) return;
-    var sz = sizeOf(card);
-    // move the card into the "rest" bucket
-    card.setAttribute('data-hotspot', REST);
-    var tag = btn.closest('.hs-tag');
-    if (tag) tag.remove();
-    // update chip counts: shrink the old hotspot, grow "Weitere"
-    adjustChip(old, -sz);
-    var restChip = document.querySelector('.chip[data-filter="' + REST + '"]');
-    if (restChip){ adjustChip(REST, sz); }
-    // if the old hotspot was the active filter, this card now hides itself
-    applyFilter();
-  });
-})();
-</script>"""
+    # The client-side interactions (hotspot filter, blindspots box, colour
+    # toggle, keyword search, share) all live in static/app.js and self-guard on
+    # the DOM elements they need, so nothing has to be prepared here.
 
-    # Blindspots box: per-cluster x removes the highlighted box copy (client-side
-    # only, resets on the next generated page). The cluster stays in the flat
-    # list below, but its blindspot badge there is removed too (so it no longer
-    # marks itself as a blindspot once dismissed from the box). The box counter
-    # updates and the box hides itself when empty.
-    bs_js = ""
-    if blindspots:
-        bs_js = """
-<script>
-(function(){
-  var box = document.getElementById('bs-box');
-  if (!box) return;
-  var countEl = document.getElementById('bs-count');
-  function esc(v){ return (window.CSS && CSS.escape) ? CSS.escape(v) : v; }
-  document.addEventListener('click', function(ev){
-    var btn = ev.target.closest ? ev.target.closest('.bs-remove') : null;
-    if (!btn) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    var card = btn.closest('.card');
-    if (!card || !box.contains(card)) return;   // only act on the box copy
-    var cid = card.getAttribute('data-cid');
-    // remove the blindspot badge on the same cluster's copy in the flat list
-    if (cid){
-      var listCard = document.querySelector('#cluster-list .card[data-cid="' + esc(cid) + '"]');
-      if (listCard){
-        var b = listCard.querySelector('.bs');
-        if (b) b.remove();
-      }
-    }
-    card.remove();
-    var left = box.querySelectorAll('.card').length;
-    if (countEl){ countEl.textContent = '(' + left + ')'; }
-    if (left === 0){ box.style.display = 'none'; }
-  });
-})();
-</script>"""
-
-    # Colour-scheme toggle: flip between EU (left=red) and US (left=blue) by
-    # toggling body.us-colors; all bars use CSS vars, so this recolours
-    # everything at once. Client-side only; the per-page default is EU.
-    color_js = """
-<script>
-(function(){
-  var btn = document.getElementById('color-toggle');
-  var nameEl = document.getElementById('color-scheme-name');
-  if (!btn) return;
-  btn.addEventListener('click', function(){
-    var us = document.body.classList.toggle('us-colors');
-    if (nameEl) nameEl.textContent = us ? 'US' : 'EU';
-  });
-})();
-</script>"""
-
-    # Keyword filter: show only clusters whose label + article titles + source
-    # names contain every entered term (AND, case-insensitive substring). Works
-    # together with the hotspot filter (a card must satisfy both). Client-side
-    # only; resets when the page is regenerated.
-    search_js = """
-<script>
-(function(){
-  var box = document.getElementById('kw-search');
-  if (!box) return;
-  var cards = document.querySelectorAll('#cluster-list .card');
-  var countEl = document.getElementById('kw-count');
-  var bsBox = document.getElementById('bs-box');
-  var bsCount = document.getElementById('bs-count');
-  window.__npSearchTerms = [];
-  function matches(card, terms){
-    if (!terms.length) return true;
-    var blob = card.getAttribute('data-search') || '';
-    for (var i = 0; i < terms.length; i++){
-      if (blob.indexOf(terms[i]) === -1) return false;
-    }
-    return true;
-  }
-  // --- highlighting (safe, text-node based - never innerHTML on user text) ---
-  // Selectors of the text-bearing parts that are also the search corpus:
-  // the label, the source links, and the article-list items.
-  var HL_SEL = '.label, .srcs a, .arts li';
-  function clearHL(card){
-    var marks = card.querySelectorAll('mark.kw-hit');
-    marks.forEach(function(m){
-      var p = m.parentNode;
-      p.replaceChild(document.createTextNode(m.textContent), m);
-      p.normalize();   // merge adjacent text nodes back
-    });
-  }
-  function hlTextNode(node, terms){
-    var text = node.nodeValue;
-    var low = text.toLowerCase();
-    // find the earliest match of any term at each position
-    var hit = -1, hitLen = 0, hitPos = text.length;
-    for (var i = 0; i < terms.length; i++){
-      var p = low.indexOf(terms[i]);
-      if (p !== -1 && p < hitPos){ hitPos = p; hitLen = terms[i].length; hit = p; }
-    }
-    if (hit === -1) return 0;
-    var frag = document.createDocumentFragment();
-    var count = 0, idx = 0;
-    while (true){
-      // earliest term match at/after idx
-      var best = -1, bestLen = 0;
-      for (var j = 0; j < terms.length; j++){
-        var pp = low.indexOf(terms[j], idx);
-        if (pp !== -1 && (best === -1 || pp < best)){ best = pp; bestLen = terms[j].length; }
-      }
-      if (best === -1){ frag.appendChild(document.createTextNode(text.slice(idx))); break; }
-      if (best > idx) frag.appendChild(document.createTextNode(text.slice(idx, best)));
-      var m = document.createElement('mark');
-      m.className = 'kw-hit';
-      m.textContent = text.slice(best, best + bestLen);
-      frag.appendChild(m);
-      count++;
-      idx = best + bestLen;
-    }
-    node.parentNode.replaceChild(frag, node);
-    return count;
-  }
-  function highlight(card, terms){
-    clearHL(card);
-    if (!terms.length) return 0;
-    var total = 0;
-    card.querySelectorAll(HL_SEL).forEach(function(el){
-      // only direct text nodes of el (skip nested elements already handled)
-      var kids = Array.prototype.slice.call(el.childNodes);
-      kids.forEach(function(n){
-        if (n.nodeType === 3) total += hlTextNode(n, terms);
-      });
-    });
-    return total;
-  }
-  function setHits(card, n){
-    var el = card.querySelector('.kw-hits');
-    if (el) el.textContent = n ? (' \\u00b7 ' + n + ' Treffer') : '';
-  }
-  function fallbackApply(){
-    // used only when there is no hotspot filter on the page
-    var terms = window.__npSearchTerms;
-    cards.forEach(function(card){
-      card.style.display = matches(card, terms) ? '' : 'none';
-    });
-  }
-  function applyToBox(){
-    // also filter the highlighted blindspots box: matching cards stay, the
-    // box counter follows, and the whole box hides when nothing matches.
-    if (!bsBox) return;
-    var terms = window.__npSearchTerms;
-    var bsCards = bsBox.querySelectorAll('.card');
-    var vis = 0;
-    bsCards.forEach(function(card){
-      var ok = matches(card, terms);
-      card.style.display = ok ? '' : 'none';
-      if (ok) vis++;
-    });
-    if (bsCount) bsCount.textContent = '(' + vis + ')';
-    bsBox.style.display = (vis === 0) ? 'none' : '';
-  }
-  function run(){
-    var q = box.value.toLowerCase().trim();
-    window.__npSearchTerms = q ? q.split(/\\s+/) : [];
-    var terms = window.__npSearchTerms;
-    // filtering is cheap -> do it immediately for responsive show/hide
-    if (window.__npApplyFilter){ window.__npApplyFilter(); }
-    else { fallbackApply(); }
-    applyToBox();
-    if (countEl){
-      if (terms.length){
-        var vis = 0;
-        cards.forEach(function(c){ if (c.style.display !== 'none') vis++; });
-        countEl.textContent = vis + ' Treffer';
-      } else {
-        countEl.textContent = '';
-      }
-    }
-    // highlighting touches many DOM nodes (large clusters have hundreds of
-    // list items) -> debounce it so fast typing doesn't stutter.
-    if (window.__npHlTimer) clearTimeout(window.__npHlTimer);
-    window.__npHlTimer = setTimeout(function(){
-      document.querySelectorAll('.card').forEach(function(card){
-        if (terms.length && card.style.display !== 'none'){
-          setHits(card, highlight(card, terms));
-        } else {
-          clearHL(card); setHits(card, 0);
-        }
-      });
-    }, 160);
-  }
-  box.addEventListener('input', run);
-})();
-</script>"""
-
-    # Teilen-Buttons: mobil -> natives Share-Sheet (navigator.share).
-    # desktop -> small menu with "Copy" / "E-mail" options.
-    share_js = """
-<script>
-(function(){
-  function mailLink(title, text){
-    return 'mailto:?subject=' + encodeURIComponent(title) +
-           '&body=' + encodeURIComponent(text);
-  }
-  function copyText(btn, text){
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function(){
-        var old = btn.textContent;
-        btn.textContent = 'kopiert';
-        btn.classList.add('copied');
-        setTimeout(function(){ btn.textContent = old; btn.classList.remove('copied'); }, 1500);
-      }).catch(function(){
-        window.prompt('Zum Kopieren markieren und Strg+C:', text);
-      });
-    } else {
-      window.prompt('Zum Kopieren markieren und Strg+C:', text);
-    }
-  }
-  var openMenu = null;
-  function closeMenu(){ if (openMenu){ openMenu.remove(); openMenu = null; } }
-  document.addEventListener('click', function(){ closeMenu(); });
-
-  function showMenu(btn, title, text){
-    closeMenu();
-    var menu = document.createElement('div');
-    menu.className = 'share-menu';
-    var bCopy = document.createElement('button');
-    bCopy.type = 'button'; bCopy.textContent = 'Kopieren';
-    bCopy.addEventListener('click', function(e){ e.stopPropagation(); closeMenu(); copyText(btn, text); });
-    var aMail = document.createElement('a');
-    aMail.textContent = 'E-Mail'; aMail.href = mailLink(title, text);
-    aMail.addEventListener('click', function(e){ e.stopPropagation(); closeMenu(); });
-    menu.appendChild(bCopy); menu.appendChild(aMail);
-    btn.parentNode.insertBefore(menu, btn.nextSibling);
-    openMenu = menu;
-  }
-
-  document.querySelectorAll('.share').forEach(function(btn){
-    btn.addEventListener('click', function(e){
-      e.stopPropagation();
-      var text = btn.getAttribute('data-share') || '';
-      var title = btn.getAttribute('data-title') || 'NewsPrism';
-      if (navigator.share) {                 // mobil: direkt Share-Sheet
-        navigator.share({title: title, text: text}).catch(function(){});
-        return;
-      }
-      showMenu(btn, title, text);            // desktop: selection menu
-    });
-  });
-})();
-</script>"""
-
-    # Refresh button (only if refresh_server is active). Auth is handled by the reverse proxy.
+    # Refresh button (only if refresh_server is active). Auth is handled by the
+    # reverse proxy.
     refresh_btn = ""
-    refresh_js = ""
     if refresh_enabled:
         refresh_btn = (' · <button id="refresh-btn" class="refresh">Aktualisieren</button>'
                        '<span id="refresh-msg" class="refresh-msg"></span>')
-        refresh_js = """
-<script>
-(function(){
-  var btn = document.getElementById('refresh-btn');
-  var msg = document.getElementById('refresh-msg');
-  if(!btn) return;
-  btn.addEventListener('click', function(){
-    btn.disabled = true; msg.textContent = ' wird angestoßen ...';
-    msg.style.color = '';
-    fetch('refresh', {method:'POST'}).then(function(r){
-      return r.text().then(function(t){
-        msg.textContent = ' ' + t;
-        // 202 = triggered (success), 429 = already running / cooldown (notice)
-        msg.style.color = (r.status === 202) ? '#15803d' : '#b5341f';
-        // keep the button disabled on 202 (run in progress), otherwise re-enable
-        if(r.status !== 202){ setTimeout(function(){ btn.disabled = false; }, 3000); }
-      });
-    }).catch(function(){
-      msg.textContent = ' Fehler beim Anstoßen.';
-      msg.style.color = '#b5341f';
-      btn.disabled = false;
-    });
-  });
-})();
-</script>"""
 
-    # cost line (if usage data is present and > 0)
-    doc = f"""<!doctype html><html lang="de"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html.escape(payload['title'])}</title>
-{FAVICON_TAG}
-<style>
-  /* Political-colour scheme. Default EU convention: left = red, right = blue.
-     body.us-colors flips to the US convention: left = blue, right = red.
-     All bars use these vars, so toggling one class recolours everything. */
-  :root{{
-    --lean-left:#b5341f; --lean-center:#6b7280; --lean-right:#2c6fbb;
-    --score-sm2:#7f1d1d; --score-sm1:#dc2626; --score-sp0:#6b7280;
-    --score-sp1:#3b82f6; --score-sp2:#1e3a8a;
-  }}
-  body.us-colors{{
-    --lean-left:#2c6fbb; --lean-right:#b5341f;
-    --score-sm2:#1e3a8a; --score-sm1:#3b82f6;
-    --score-sp1:#dc2626; --score-sp2:#7f1d1d;
-  }}
-  body{{font-family:system-ui,sans-serif;background:#eef1f5;color:#1f2937;margin:0;padding:1rem;}}
-  h1{{font-size:1.2rem;font-weight:600;margin-bottom:.2rem;}}
-  .brand{{margin:0 0 .4rem;line-height:0;}}
-  .brand svg{{display:block;height:64px;width:auto;}}
-  .brand-prism{{fill:#1f2a44;}}
-  .brand-word{{fill:#1f2a44;font-family:system-ui,-apple-system,sans-serif;}}
-  .brand-accent{{fill:#3b82f6;}}
-  .meta{{color:#6b7280;font-size:.8rem;margin-bottom:1rem;}}
-  .legend{{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;font-size:.78rem;color:#6b7280;margin:-.6rem 0 1rem;}}
-  .legend-item{{display:inline-flex;align-items:center;gap:.3rem;}}
-  .legend .sw{{display:inline-block;width:12px;height:12px;border-radius:3px;}}
-  .color-toggle{{border:1px solid #cbd5e1;background:#fff;color:#374151;border-radius:6px;padding:2px 8px;font-size:.76rem;cursor:pointer;}}
-  .color-toggle:hover{{background:#f3f4f6;}}
-  .search-row{{display:flex;align-items:center;gap:.6rem;margin:0 0 1rem;}}
-  .kw-search{{flex:1;max-width:420px;padding:6px 10px;font-size:.85rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1f2937;}}
-  .kw-search:focus{{outline:none;border-color:#6b7280;}}
-  .kw-count{{font-size:.76rem;color:#6b7280;white-space:nowrap;}}
-  mark.kw-hit{{background:#fde68a;color:inherit;border-radius:2px;padding:0 1px;}}
-  .kw-hits{{color:#b45309;font-weight:600;}}
-  .cfg-warn{{background:#fef2f2;border:1px solid #dc2626;color:#991b1b;
-     border-radius:8px;padding:.7rem 1rem;margin-bottom:1rem;font-size:.9rem;
-     font-weight:600;}}
-  .ver-date{{color:#9ca3af;}}
-  .stats{{font-size:.74rem;color:#9ca3af;margin:-.7rem 0 1.1rem;}}
-  .stats>summary{{cursor:pointer;user-select:none;list-style:none;}}
-  .stats>summary::before{{content:"▸ ";}}
-  .stats[open]>summary::before{{content:"▾ ";}}
-  .stats-grid,.stat-row{{display:flex;justify-content:space-between;max-width:24rem;
-     padding:.12rem 0;border-bottom:1px solid #e5e9ee;}}
-  .stat-k{{color:#9ca3af;}} .stat-v{{color:#4b5563;}}
-  .card{{background:#fff;border:1px solid #dbe0e6;border-radius:10px;padding:.7rem .9rem;margin:.6rem 0;}}
-  .head{{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap;position:relative;}}
-  .size{{background:#1f2a44;color:#fff;border-radius:6px;font-size:.75rem;padding:1px 7px;}}
-  .label{{font-weight:600;flex:1;}}
-  .share{{background:none;border:1px solid #dbe0e6;color:#6b7280;cursor:pointer;
-     border-radius:6px;font-size:.85rem;line-height:1;padding:2px 7px;flex:none;}}
-  .share:hover{{background:#f1f3f7;color:#1f2a44;}}
-  .share.copied{{background:#1f2a44;color:#fff;border-color:#1f2a44;}}
-  .share-menu{{position:absolute;right:0;top:100%;z-index:20;margin-top:4px;
-     background:#fff;border:1px solid #dbe0e6;border-radius:8px;
-     box-shadow:0 4px 14px rgba(0,0,0,.12);display:flex;flex-direction:column;
-     min-width:7rem;overflow:hidden;}}
-  .share-menu button,.share-menu a{{background:none;border:none;text-align:left;
-     font-size:.82rem;padding:.5rem .8rem;cursor:pointer;color:#1f2a44;
-     text-decoration:none;display:block;}}
-  .share-menu button:hover,.share-menu a:hover{{background:#f1f3f7;}}
-  .bar{{border-radius:5px;overflow:hidden;background:#e5e7eb;font-size:0;}}
-  .orig{{font-size:.65rem;font-weight:600;border-radius:6px;padding:1px 6px;}}
-  .s-sc{{color:#78350f;}} .s-sf{{color:#a16207;}} .s-in{{color:#6e6a2c;}}
-  .srcs{{font-size:.8rem;margin-top:.5rem;line-height:1.6;}}
-  .src-n{{display:inline-block;font-size:.7rem;color:#9ca3af;font-weight:600;
-     border:1px solid #dbe0e6;border-radius:6px;padding:0 6px;margin-right:.5rem;}}
-  .refresh{{font:inherit;font-size:.78rem;cursor:pointer;border:1px solid #cbd2da;
-     background:#fff;color:#1f2937;border-radius:6px;padding:1px 8px;}}
-  .refresh:hover{{border-color:#1f2a44;}} .refresh:disabled{{opacity:.5;cursor:default;}}
-  .refresh-msg{{font-size:.75rem;color:#6b7280;}}
-  .bs{{font-size:.7rem;font-weight:600;border-radius:6px;padding:1px 7px;display:inline-flex;align-items:center;gap:3px;}}
-  .bs-remove{{border:0;background:none;color:inherit;opacity:.55;cursor:pointer;font-size:.95rem;line-height:1;padding:0 1px;border-radius:4px;}}
-  .bs-remove:hover{{opacity:1;background:rgba(0,0,0,.08);}}
-  .bs-l{{background:color-mix(in srgb, var(--lean-left) 18%, transparent);color:var(--lean-left);}} .bs-r{{background:color-mix(in srgb, var(--lean-right) 18%, transparent);color:var(--lean-right);}}
-  .ai{{font-size:.65rem;font-weight:600;border-radius:6px;padding:1px 6px;background:#ece7fa;color:#5b3fae;}}
-  .hs-tag{{font-size:.65rem;font-weight:600;border-radius:6px;padding:1px 6px;background:#e3edf7;color:#2c6fbb;display:inline-flex;align-items:center;gap:3px;}}
-  .hs-remove{{border:0;background:none;color:inherit;opacity:.55;cursor:pointer;font-size:.9rem;line-height:1;padding:0 1px;border-radius:4px;}}
-  .hs-remove:hover{{opacity:1;background:rgba(0,0,0,.08);}}
-  /* Zone 1: Blindspots-Box */
-  .bs-box{{border:2px solid #e0a890;background:#fdf6f2;border-radius:12px;padding:.3rem .8rem .8rem;margin:.6rem 0 1.4rem;}}
-  .bs-box-title{{font-weight:700;color:#b5341f;font-size:.95rem;margin:.6rem 0 .2rem;}}
-  /* Zone 2: Hotspot-Chips */
-  .chips{{display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0 1rem;}}
-  .chip{{font:inherit;font-size:.8rem;cursor:pointer;border:1px solid #cbd2da;background:#fff;
-     color:#1f2937;border-radius:999px;padding:.25rem .7rem;}}
-  .chip.active{{background:#1f2a44;color:#fff;border-color:#1f2a44;}}
-  .chip-n{{opacity:.6;font-size:.7rem;}}
-  /* gemeinsame Karten-Innereien */
-  .arts{{margin-top:.5rem;font-size:.8rem;}}
-  .arts summary{{cursor:pointer;color:#6b7280;user-select:none;list-style:none;}}
-  .arts summary::before{{content:"▶ ";font-size:.7rem;}}
-  details[open].arts summary::before{{content:"▼ ";}}
-  .arts ul{{margin:.4rem 0 0 0;padding-left:1.1rem;line-height:1.7;}}
-  .arts li a{{font-weight:600;text-decoration:none;}}
-  .arts li a:hover{{text-decoration:underline;}}
-  @media(prefers-color-scheme:dark){{
-    body{{background:#11151c;color:#e5e7eb;}} .card{{background:#1b212b;border-color:#2a323e;}}
-    .brand-prism{{fill:#e5e7eb;}} .brand-word{{fill:#f1f3f7;}} .brand-accent{{fill:#60a5fa;}}
-    .arts summary{{color:#9ca3af;}}
-    .bs-box{{background:#241a16;border-color:#7a4a36;}}
-    .cfg-warn{{background:#2a1414;border-color:#dc2626;color:#fca5a5;}}
-    .chip{{background:#1b212b;color:#e5e7eb;border-color:#2a323e;}}
-    .chip.active{{background:#e5e7eb;color:#11151c;border-color:#e5e7eb;}}
-    .hs-tag{{background:#22303d;color:#7fb0e0;}}
-    .src-n{{border-color:#2a323e;color:#6b7280;}}
-    .s-sc{{color:#d99a5b;}} .s-sf{{color:#d8a657;}} .s-in{{color:#c4bd6a;}}
-    .stat-row{{border-color:#222a35;}} .stat-v{{color:#cbd5e1;}}
-    .bar{{background:#2a323e;}}
-    .refresh{{background:#1b212b;color:#e5e7eb;border-color:#2a323e;}}
-    .kw-search{{background:#1b212b;color:#e5e7eb;border-color:#2a323e;}}
-    mark.kw-hit{{background:#a16207;color:#fff;}}
-    .kw-hits{{color:#fbbf24;}}
-    .color-toggle{{background:#1b212b;color:#e5e7eb;border-color:#2a323e;}}
-    .color-toggle:hover{{background:#222a35;}}
-    .share{{border-color:#2a323e;color:#9ca3af;}}
-    .share:hover{{background:#222a35;color:#e5e7eb;}}
-    .share-menu{{background:#1b212b;border-color:#2a323e;}}
-    .share-menu button,.share-menu a{{color:#e5e7eb;}}
-    .share-menu button:hover,.share-menu a:hover{{background:#222a35;}}
-  }}
-</style></head><body>
-<h1 class="brand">
-  <svg viewBox="0 0 480 120" role="img" aria-label="{html.escape(payload['title'])}">
-    <line x1="20" y1="60" x2="60" y2="60" stroke="#9ca3af" stroke-width="5" stroke-linecap="round"/>
-    <polygon class="brand-prism" points="64,30 64,90 112,60"/>
-    <line x1="114" y1="60" x2="170" y2="36" stroke="#1e3a8a" stroke-width="4" stroke-linecap="round"/>
-    <line x1="114" y1="60" x2="172" y2="48" stroke="#3b82f6" stroke-width="4" stroke-linecap="round"/>
-    <line x1="114" y1="60" x2="174" y2="60" stroke="#6b7280" stroke-width="4" stroke-linecap="round"/>
-    <line x1="114" y1="60" x2="172" y2="72" stroke="#dc2626" stroke-width="4" stroke-linecap="round"/>
-    <line x1="114" y1="60" x2="170" y2="84" stroke="#7f1d1d" stroke-width="4" stroke-linecap="round"/>
-    <text x="220" y="73" class="brand-word" font-size="40" font-weight="600">News<tspan class="brand-accent">Prism</tspan></text>
-  </svg>
-</h1>
-<div class="meta">Stand: {html.escape(payload.get('generated_local', payload['generated']))} · {len(visible)} Cluster · <a href="archiv/" style="color:inherit;">Archiv</a>{refresh_btn}{_version_str()}</div>
-<div class="legend">
-  <span class="legend-item"><span class="sw" style="background:var(--lean-left)"></span>links</span>
-  <span class="legend-item"><span class="sw" style="background:var(--lean-center)"></span>Mitte</span>
-  <span class="legend-item"><span class="sw" style="background:var(--lean-right)"></span>rechts</span>
-  <button id="color-toggle" type="button" class="color-toggle"
-          title="Zwischen EU-Farben (links=rot) und US-Farben (links=blau) umschalten">
-    Farbschema: <span id="color-scheme-name">EU</span>
-  </button>
-</div>
-<div class="search-row">
-  <input type="search" id="kw-search" class="kw-search" autocomplete="off"
-         placeholder="Schlagwörter filtern (Leerzeichen = UND) …"
-         aria-label="Cluster nach Schlagwörtern filtern">
-  <span id="kw-count" class="kw-count"></span>
-</div>
-{_config_warn_html(payload.get('config_warning'))}
-{_usage_line(payload.get('usage'))}
-{bs_section}
-{chips}
-<div id="cluster-list">
-{list_cards}
-</div>
-{filter_js}
-{bs_js}
-{color_js}
-{search_js}
-{share_js}
-{refresh_js}
-</body></html>"""
+    doc = _jinja_env().get_template("dashboard.html.j2").render(
+        title=payload["title"],
+        favicon_tag=FAVICON_TAG,
+        css_href=css_href,
+        js_src=js_src,
+        generated_local=payload.get("generated_local", payload["generated"]),
+        n_visible=len(visible),
+        refresh_btn=refresh_btn,
+        version_str=_version_str(),
+        config_warn=_config_warn_html(payload.get("config_warning")),
+        usage_line=_usage_line(payload.get("usage")),
+        bs_section=bs_section,
+        chips=chips,
+        list_cards=list_cards,
+    )
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(doc)
+
+
+def _publish_static_assets(dest_dir: str) -> dict:
+    """Copy the dashboard's static assets into dest_dir under content-hashed
+    names (e.g. style.a1b2c3d4.css) and return {logical_name: hashed_name}.
+
+    Content-hashing keeps archive snapshots faithful: each snapshot references
+    the asset versions that existed when it was written, so changing the CSS/JS
+    later cannot break the styling or interactivity of old snapshots. Unchanged
+    content keeps the same hash (no duplicate files); changed content gets a new
+    name and the old file simply stays behind for the older snapshots. Sources
+    live in a static/ directory alongside this script (copied into the image)."""
+    import hashlib
+    import shutil
+    src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+    mapping = {}
+    for name in ("style.css", "app.js"):
+        src = os.path.join(src_dir, name)
+        if not os.path.exists(src):
+            mapping[name] = name          # fallback: unhashed reference
+            continue
+        with open(src, "rb") as fh:
+            digest = hashlib.sha1(fh.read()).hexdigest()[:8]
+        stem, ext = os.path.splitext(name)
+        hashed = f"{stem}.{digest}{ext}"
+        mapping[name] = hashed
+        dst = os.path.join(dest_dir, hashed)
+        try:
+            if not os.path.exists(dst):      # hashed name => identical if present
+                shutil.copy2(src, dst)
+        except OSError as exc:
+            print(f"[warn] could not copy static asset {name}: {exc}",
+                  file=sys.stderr)
+            mapping[name] = name
+    return mapping
 
 
 def _lean_summary(counts: dict) -> str:
@@ -2880,6 +2433,13 @@ def _archive_html(html_path: str, payload: dict, cfg: dict) -> None:
         content = re.sub(r' · <button id="refresh-btn".*?</span>', "", content, flags=re.DOTALL)
         content = re.sub(r'<script>\s*\(function\(\)\{\s*var btn = document\.getElementById\(.refresh-btn.\).*?</script>',
                          "", content, flags=re.DOTALL)
+        # Snapshots live one level down in archiv/, so the shared assets (which
+        # sit next to the main index.html, under content-hashed names) must be
+        # referenced via ../ . Rewrite whatever hashed names this run used.
+        content = re.sub(r'href="(style\.[0-9a-f]+\.css)"',
+                         r'href="../\1"', content)
+        content = re.sub(r'src="(app\.[0-9a-f]+\.js)"',
+                         r'src="../\1"', content)
         with open(snap_path, "w", encoding="utf-8") as fh:
             fh.write(content)
     except Exception as exc:
@@ -2894,7 +2454,7 @@ def _archive_html(html_path: str, payload: dict, cfg: dict) -> None:
              if re.match(r"\d{4}-\d{2}-\d{2}_\d{4}\.html$", f)),
             reverse=True,
         )
-        title = html.escape(payload.get("title", "Newsprism"))
+        title = payload.get("title", "Newsprism")   # raw; Jinja escapes it
         MONTHS = ["", "Januar", "Februar", "März", "April", "Mai", "Juni",
                   "Juli", "August", "September", "Oktober", "November", "Dezember"]
         WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
@@ -2931,37 +2491,14 @@ def _archive_html(html_path: str, payload: dict, cfg: dict) -> None:
                 f'<section><h2>{MONTHS[mo]} {y}</h2>{"".join(day_blocks)}</section>'
             )
 
-        index_doc = f"""<!doctype html><html lang="de"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} – Archiv</title>
-{FAVICON_TAG}
-<style>
-  body{{font-family:system-ui,sans-serif;background:#eef1f5;color:#1f2937;
-     margin:0;padding:1rem;max-width:70rem;}}
-  h1{{font-size:1.2rem;font-weight:600;margin-bottom:.2rem;}}
-  .meta{{color:#6b7280;font-size:.8rem;margin-bottom:1.4rem;}}
-  h2{{font-size:1rem;font-weight:700;margin:1.4rem 0 .6rem;
-     border-bottom:2px solid #cbd2da;padding-bottom:.2rem;}}
-  .day{{margin:.5rem 0 .9rem;}}
-  .day-h{{font-size:.82rem;font-weight:600;color:#4b5563;margin-bottom:.35rem;}}
-  .day-n{{font-weight:400;color:#9ca3af;font-size:.72rem;}}
-  .chips{{display:flex;flex-wrap:wrap;gap:.4rem;}}
-  .chips a{{background:#fff;border:1px solid #dbe0e6;border-radius:8px;
-     padding:.35rem .6rem;text-decoration:none;color:#1f2937;font-size:.82rem;
-     font-variant-numeric:tabular-nums;}}
-  .chips a:hover{{border-color:#1f2a44;}}
-  @media(prefers-color-scheme:dark){{
-    body{{background:#11151c;color:#e5e7eb;}}
-    h2{{border-color:#2a323e;}} .day-h{{color:#cbd5e1;}}
-    .chips a{{background:#1b212b;border-color:#2a323e;color:#e5e7eb;}}
-  }}
-</style></head><body>
-<h1>{title} – Archiv</h1>
-<div class="meta">{len(snaps)} Snapshots · <a href="../" style="color:inherit;">zurück zum Dashboard</a></div>
-{''.join(sections)}
-</body></html>"""
+        doc = _jinja_env().get_template("archive.html.j2").render(
+            title=title,
+            favicon_tag=FAVICON_TAG,
+            n_snaps=len(snaps),
+            sections="".join(sections),
+        )
         with open(os.path.join(archive_dir, "index.html"), "w", encoding="utf-8") as fh:
-            fh.write(index_doc)
+            fh.write(doc)
     except Exception as exc:
         print(f"[warn] archive index failed: {exc}", file=sys.stderr)
 

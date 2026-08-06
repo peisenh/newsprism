@@ -1,0 +1,16 @@
+{%- import "macros.html.j2" as m -%}
+{#- One cluster card. All values are prepared in Python (_render_card); this
+    template only lays out the markup. URLs arrive already passed through
+    _safe_url, and Jinja autoescaping handles HTML-escaping of every value, so
+    there are no manual html.escape calls here. Fields that are themselves
+    trusted markup (badges built in Python) are wrapped in |safe explicitly. -#}
+<div class="card" data-hotspot="{{ hs_attr }}" data-cid="{{ cid }}" data-search="{{ search_blob }}">
+  <div class="head"><span class="size">{{ c.size }}</span>
+    <span class="label">{{ c.label }}</span>{{ ai_badge|safe }}{{ hs_badge|safe }}{{ m.origin_badge(origin_badge) }}{{ badge|safe }}{{ share_btn|safe }}</div>
+  {{ (m.bias_bar(c.bias_counts) if c.bias_counts else m.lean_bar(c.lean_counts)) }}
+  <div class="srcs"><span class="src-n">{{ n_src }} Quelle{{ 'n' if n_src != 1 else '' }}</span>{{ srcs|safe }}</div>
+  <details class="arts">
+    <summary>{{ art_count }} Artikel<span class="kw-hits"></span></summary>
+    <ul>{{ art_items|safe }}</ul>
+  </details>
+</div>

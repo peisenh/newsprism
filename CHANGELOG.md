@@ -3,10 +3,32 @@
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/). Releases
-in the 0.x series are published as pre-releases.
+and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-08-06
+### Changed
+- Moved the HTML, CSS, and JavaScript out of `newsprism.py` into external
+  files: the dashboard, cards, and archive index are now Jinja2 templates
+  (`templates/`), and the stylesheet and client-side script live in `static/`.
+  No HTML is generated in Python anymore. The rendered output is visually
+  identical (verified whitespace-normalized identical); only insignificant
+  whitespace in the markup differs.
+
+### Added
+- `Jinja2` runtime dependency (for the HTML templating).
+- Static assets are published under content-hashed names
+  (`style.<hash>.css`, `app.<hash>.js`). Each archive snapshot references the
+  asset versions it was written with, so later CSS/JS changes can no longer
+  break the styling or interactivity of older snapshots.
+
+### Notes
+- Deployment: the image now also ships `templates/` and `static/`, and the
+  dashboard's stylesheet and script are served as separate files next to
+  `index.html` (the page is no longer a single self-contained file). The Atom
+  feed is deliberately still rendered in Python (XML escaping differs from
+  Jinja's HTML autoescaping).
 
 ## [0.1.3] - 2026-08-04
 ### Added
@@ -31,7 +53,8 @@ in the 0.x series are published as pre-releases.
   by political lean and surfaces bias and blindspots, using Cohere `embed-v4.0`
   multilingual embeddings and a domain-keyed media bias map.
 
-[Unreleased]: https://github.com/peisenh/newsprism/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/peisenh/newsprism/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/peisenh/newsprism/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/peisenh/newsprism/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/peisenh/newsprism/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/peisenh/newsprism/compare/v0.1.0...v0.1.1
