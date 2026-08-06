@@ -1845,11 +1845,6 @@ _ORIGIN_MIN_COUNT = 2
 ORIGIN_CLASS = {"state-controlled": "s-sc", "state-funded": "s-sf",
                 "independent-nonwestern": "s-in"}
 
-# Favicon (Prisma icon) as an inline data URI - so every generated page
-# (dashboard and archive snapshot) carries its own favicon, without an external
-# file in the output volume (no path/reset breakage risk). Source: logo/favicon.svg.
-FAVICON_TAG = '<link rel="icon" href="data:image/svg+xml,%3Csvg%20width%3D%2264%22%20height%3D%2264%22%20viewBox%3D%220%200%2064%2064%22%20role%3D%22img%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Ctitle%3ENewsPrism%3C/title%3E%3Cdesc%3ENewsPrism%20Favicon%3A%20aufgef%C3%A4chertes%20Bias-Spektrum.%3C/desc%3E%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%23f1f3f7%22/%3E%3Ccircle%20cx%3D%2218%22%20cy%3D%2232%22%20r%3D%225%22%20fill%3D%22%231f2a44%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2252%22%20y2%3D%2214%22%20stroke%3D%22%231e3a8a%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2254%22%20y2%3D%2225%22%20stroke%3D%22%233b82f6%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2255%22%20y2%3D%2232%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2254%22%20y2%3D%2239%22%20stroke%3D%22%23dc2626%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2252%22%20y2%3D%2250%22%20stroke%3D%22%237f1d1d%22%20stroke-width%3D%225.5%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E">'
-
 
 def _src_attr(a: dict) -> str:
     """style/class attributes for a source link. Non-Western/state sources
@@ -2127,6 +2122,7 @@ def write_html(payload: dict, path: str, refresh_enabled: bool = False) -> None:
     assets = _publish_static_assets(os.path.dirname(path))
     css_href = assets["style.css"]
     js_src = assets["app.js"]
+    favicon_link = f'<link rel="icon" href="{assets["favicon.svg"]}">'
     # Take the origin-badge thresholds from the payload (from to_payload/cfg).
     global _ORIGIN_MIN_SHARE, _ORIGIN_MIN_COUNT
     if "origin_min_share" in payload:
@@ -2184,7 +2180,7 @@ def write_html(payload: dict, path: str, refresh_enabled: bool = False) -> None:
 
     doc = _jinja_env().get_template("dashboard.html.j2").render(
         title=payload["title"],
-        favicon_tag=FAVICON_TAG,
+        favicon_tag=favicon_link,
         css_href=css_href,
         js_src=js_src,
         generated_local=payload.get("generated_local", payload["generated"]),
@@ -2215,7 +2211,7 @@ def _publish_static_assets(dest_dir: str) -> dict:
     import shutil
     src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
     mapping = {}
-    for name in ("style.css", "app.js"):
+    for name in ("style.css", "app.js", "favicon.svg"):
         src = os.path.join(src_dir, name)
         if not os.path.exists(src):
             mapping[name] = name          # fallback: unhashed reference
@@ -2440,6 +2436,8 @@ def _archive_html(html_path: str, payload: dict, cfg: dict) -> None:
                          r'href="../\1"', content)
         content = re.sub(r'src="(app\.[0-9a-f]+\.js)"',
                          r'src="../\1"', content)
+        content = re.sub(r'href="(favicon\.[0-9a-f]+\.svg)"',
+                         r'href="../\1"', content)
         with open(snap_path, "w", encoding="utf-8") as fh:
             fh.write(content)
     except Exception as exc:
@@ -2491,9 +2489,14 @@ def _archive_html(html_path: str, payload: dict, cfg: dict) -> None:
                 f'<section><h2>{MONTHS[mo]} {y}</h2>{"".join(day_blocks)}</section>'
             )
 
+        # The archive index lives one level down in archiv/, so it references
+        # the favicon (which sits next to the main index.html) via ../ . Reuse
+        # the same content-hashed asset the dashboard published.
+        assets = _publish_static_assets(os.path.dirname(html_path))
+        favicon_link = f'<link rel="icon" href="../{assets["favicon.svg"]}">'
         doc = _jinja_env().get_template("archive.html.j2").render(
             title=title,
-            favicon_tag=FAVICON_TAG,
+            favicon_tag=favicon_link,
             n_snaps=len(snaps),
             sections="".join(sections),
         )

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-06
+### Changed
+- Moved the favicon out of the Python source into `static/favicon.svg`,
+  published under a content-hashed name (`favicon.<hash>.svg`) like the other
+  static assets — it was an inline `data:` URI before. Output is functionally
+  identical; archive snapshots reference the favicon version they were written
+  with, same as for CSS/JS.
+
 ## [0.2.0] - 2026-08-06
 ### Changed
 - Moved the HTML, CSS, and JavaScript out of `newsprism.py` into external
@@ -53,7 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   by political lean and surfaces bias and blindspots, using Cohere `embed-v4.0`
   multilingual embeddings and a domain-keyed media bias map.
 
-[Unreleased]: https://github.com/peisenh/newsprism/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/peisenh/newsprism/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/peisenh/newsprism/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/peisenh/newsprism/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/peisenh/newsprism/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/peisenh/newsprism/compare/v0.1.1...v0.1.2
