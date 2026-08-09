@@ -1,0 +1,68 @@
+{#- Reizfreie ("calm") plain version of the dashboard. Deliberately a single,
+    self-contained document: CSS is inline, there is no JavaScript, no favicon,
+    no colour fills, no animation. Only one contrast direction (near-black on
+    off-white, inverted in dark mode). All values are prepared in Python
+    (_write_plain_html); this template only lays them out. Autoescaping handles
+    HTML-escaping; URLs arrive already passed through _safe_url. -#}
+<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} – Plain</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1.45;
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 1.5rem 1.2rem 4rem;
+    color: #1a1a1a;
+    background: #fbfbfa;
+  }
+  a { color: #1a1a1a; }
+  a:hover { color: #000; }
+  header { margin-bottom: 1.5rem; }
+  h1 { font-size: 1.5rem; font-weight: normal; margin: 0 0 .3rem; }
+  .meta { font-size: .85rem; color: #555; }
+  .meta a { color: #555; }
+  .view-switch { display: inline-block; margin-top: .5rem; font-size: .85rem; }
+  article { border-top: 1px solid #ddd; padding: .8rem 0; }
+  h2 { font-size: 1rem; font-weight: bold; margin: 0 0 .25rem; }
+  .info { font-size: .82rem; color: #555; margin: 0 0 .25rem; }
+  .blindspot { font-style: italic; }
+  ul { margin: .3rem 0 0; padding-left: 1.2rem; }
+  li { margin: .2rem 0; font-size: .92rem; }
+  summary { font-size: .82rem; color: #555; cursor: pointer; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e2e2e2; background: #161616; }
+    a { color: #e2e2e2; } a:hover { color: #fff; }
+    .meta, .meta a, .info, summary { color: #aaa; }
+    article { border-color: #333; }
+  }
+</style></head><body>
+<header>
+  <h1>{{ title }}</h1>
+  <p class="meta">Stand: {{ generated_local }} · {{ n_visible }} Cluster ·
+    <a href="archiv/">Archiv</a></p>
+  <a class="view-switch" href="index.html">→ Standardansicht</a>
+</header>
+{% for c in clusters %}
+<article>
+  <h2>{{ c.label }}</h2>
+  <p class="info">{{ c.n_src }} Quelle{{ 'n' if c.n_src != 1 else '' }}: {{ c.sources_line }}</p>
+  {%- if c.lean_line or c.origin_note or c.blindspot_note %}
+  <p class="info">
+    {%- if c.lean_line %}{{ c.lean_line }}{% endif %}
+    {%- if c.origin_note %}{% if c.lean_line %} · {% endif %}{{ c.origin_note }}{% endif %}
+    {%- if c.blindspot_note %}{% if c.lean_line or c.origin_note %} · {% endif %}<span class="blindspot">⚠ {{ c.blindspot_note }}</span>{% endif %}</p>
+  {%- endif %}
+  <details>
+    <summary>{{ c.art_count }} Artikel</summary>
+    <ul>
+    {%- for a in c.articles %}
+      <li><a href="{{ a.url }}">{{ a.source }}</a>: {{ a.title }}</li>
+    {%- endfor %}
+    </ul>
+  </details>
+</article>
+{% endfor %}
+</body></html>

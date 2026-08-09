@@ -2196,6 +2196,72 @@ def write_html(payload: dict, path: str, refresh_enabled: bool = False) -> None:
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(doc)
 
+    # Also write the reizfreie ("calm") plain version next to it.
+    _write_plain_html(payload, os.path.join(os.path.dirname(path),
+                                            "index-plain.html"), visible)
+
+
+def _plain_cluster(c: dict) -> dict:
+    """Prepare one cluster for the plain template: distinct source names, the
+    lean split as text ("links 3 · mitte 2 · rechts 3"), an optional
+    non-Western note and a blindspot note. No colours, no markup - the template
+    lays it out and Jinja escapes everything."""
+    seen: set = set()
+    src_names = []
+    articles = []
+    for a in c["articles"]:
+        name = a["source"] or "?"
+        if name not in seen:
+            seen.add(name)
+            src_names.append(name)
+        articles.append({"source": name,
+                         "url": _safe_url(a["url"]),
+                         "title": a["title"]})
+
+    lc = c.get("lean_counts") or {}
+    lean_line = " · ".join(f"{LEAN_LABEL[k]} {lc[k]}"
+                           for k in ("left", "center", "right") if lc.get(k))
+
+    # Keep the source line calm: show the first few distinct names, then "…".
+    # The total is already shown up front ("N Quellen"), so no "+N" is needed.
+    _PLAIN_MAX_SOURCES = 4
+    if len(src_names) > _PLAIN_MAX_SOURCES:
+        sources_line = " · ".join(src_names[:_PLAIN_MAX_SOURCES]) + " …"
+    else:
+        sources_line = " · ".join(src_names)
+
+    oc = c.get("origin_counts") or {}
+    n_nonwestern = sum(oc.values())
+    # A separate dimension (origin), not a subset of the lean split - so it is
+    # NOT phrased as "of which". Same "label number" shape as the lean entries
+    # ("links 5") so the whole row reads consistently.
+    origin_note = f"nicht-westlich {n_nonwestern}" if n_nonwestern else ""
+
+    blindspot_note = {"left_only": "Blindspot: nur links",
+                      "right_only": "Blindspot: nur rechts"}.get(c["blindspot"], "")
+
+    return {"label": c["label"],
+            "n_src": len(src_names),
+            "sources_line": sources_line,
+            "lean_line": lean_line,
+            "origin_note": origin_note,
+            "blindspot_note": blindspot_note,
+            "art_count": len(c["articles"]),
+            "articles": articles}
+
+
+def _write_plain_html(payload: dict, path: str, visible: list) -> None:
+    """Write the self-contained, reizfreie plain version (see plain.html.j2).
+    Uses the same visible clusters as the main dashboard so both views match."""
+    doc = _jinja_env().get_template("plain.html.j2").render(
+        title=payload["title"],
+        generated_local=payload.get("generated_local", payload["generated"]),
+        n_visible=len(visible),
+        clusters=[_plain_cluster(c) for c in visible],
+    )
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(doc)
+
 
 def _publish_static_assets(dest_dir: str) -> dict:
     """Copy the dashboard's static assets into dest_dir under content-hashed

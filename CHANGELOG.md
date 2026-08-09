@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and commits/pushes it; `release.sh` then tags and pushes. Splitting the
   changelog push from the tag push keeps the tag push a clean, isolated event
   so the release workflow triggers reliably.
+- Plain view written next to the dashboard as `index-plain.html`: a calm,
+  self-contained document with no JavaScript, no colour fills, no animation, no
+  external resources (CSS is inline, no favicon). Shows the same clusters as the
+  dashboard, sources and lean split on separate lines as text, blindspots noted
+  in words. The dashboard links to it ("Plain") and back.
 
 ### Changed
 - The release workflow now runs on both GitHub Actions and Gitea Actions. It
