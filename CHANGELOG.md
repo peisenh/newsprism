@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- Archive snapshots no longer carry the "Plain" link. It pointed to
+  `index-plain.html` next to the live page, which does not exist under
+  `archiv/`, so in snapshots the link led nowhere; it is now stripped from the
+  snapshot copy like the refresh button.
 
 ## [0.3.0] - 2026-08-09
 ### Added

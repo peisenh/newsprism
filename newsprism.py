@@ -2493,6 +2493,9 @@ def _archive_html(html_path: str, payload: dict, cfg: dict) -> None:
         with open(html_path, "r", encoding="utf-8") as fh:
             content = fh.read()
         content = re.sub(r' · <button id="refresh-btn".*?</span>', "", content, flags=re.DOTALL)
+        # The "Plain" link points to index-plain.html next to the live page;
+        # there is no plain snapshot in archiv/, so drop the link in snapshots.
+        content = re.sub(r' · <a href="index-plain\.html"[^>]*>Plain</a>', "", content)
         content = re.sub(r'<script>\s*\(function\(\)\{\s*var btn = document\.getElementById\(.refresh-btn.\).*?</script>',
                          "", content, flags=re.DOTALL)
         # Snapshots live one level down in archiv/, so the shared assets (which
