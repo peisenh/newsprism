@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- Dependabot config (`.github/dependabot.yml`) watching pip, GitHub Actions and
+  Docker weekly, so dependency and base-image updates (and stale action
+  versions like the Node-20 checkout bump) surface as PRs automatically.
 
 ## [0.3.1] - 2026-08-10
 ### Fixed
