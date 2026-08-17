@@ -1,5 +1,5 @@
 PyYAML>=6.0
-requests>=2.31
+requests>=2.34.2
 numpy>=1.26
 scikit-learn>=1.4
 tzdata>=2024.1          # timezone data for zoneinfo (python:slim doesn't have it)
