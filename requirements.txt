@@ -1,6 +1,6 @@
 PyYAML>=6.0
 requests>=2.34.2
-numpy>=1.26
+numpy>=2.5.2
 scikit-learn>=1.9.0
 tzdata>=2026.3          # timezone data for zoneinfo (python:slim doesn't have it)
 Jinja2>=3.1              # HTML templating for the dashboard/archive output
