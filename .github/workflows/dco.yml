@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out PR history
-        uses: actions/checkout@v7
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -31,6 +31,15 @@ jobs:
               echo "skip merge   $sha  $subject"
               continue
             fi
+            # Bot commits (e.g. Dependabot) are exempt: they carry no human
+            # authorship to sign off, and the bot does not add a Signed-off-by
+            # trailer. Matched on the author, not the commit message.
+            case "$author" in
+              *"[bot]"*|*"dependabot"*)
+                echo "skip bot     $sha  $subject  (author: $author)"
+                continue
+                ;;
+            esac
             if git show -s --format='%B' "$sha" \
                  | grep -Eq '^Signed-off-by: .+ <.+@.+>$'; then
               echo "ok           $sha  $subject"

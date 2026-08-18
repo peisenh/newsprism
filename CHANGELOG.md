@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Docker weekly, so dependency and base-image updates (and stale action
   versions like the Node-20 checkout bump) surface as PRs automatically.
 
+### Changed
+- The DCO check now exempts bot commits (e.g. Dependabot), matched on the
+  author, so Dependabot PRs pass once the check is required in branch
+  protection. Human commits still need a Signed-off-by line.
+
 ## [0.3.1] - 2026-08-10
 ### Fixed
 - Archive snapshots no longer carry the "Plain" link. It pointed to
